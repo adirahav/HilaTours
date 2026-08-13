@@ -1,0 +1,26 @@
+{
+  "leaderboard-user": {
+    "name": "Adi Rahav",
+    "linearUserId": "f3b7a966-a667-42d7-91f1-15134e39d658"
+  },
+  "frontend-user": {
+    "name": "Frontend Developer",
+    "linearUserId": "56f87492-6707-4e63-9ed0-955a4c1c8342"
+  },
+  "backend-user": {
+    "name": "Backend Developer",
+    "linearUserId": "8ff82027-bb5f-4346-b2f4-bdc7d50dbcd7"
+  },
+  "qa-user": {
+    "name": "QA Engineer",
+    "linearUserId": "5b8a76d2-2014-4dbc-b9e7-12d2afc7c1dc"
+  },
+  "security-user": {
+    "name": "Security Engineer",
+    "linearUserId": "6a451e52-3768-41d3-8085-a8ba99df6c9e"
+  },
+  "orchestrator-agent": {
+    "name": "Orchestrator Agent",
+    "linearUserId": "207c80d7-7633-49e2-8ba6-38e16fb10da2"
+  }
+}

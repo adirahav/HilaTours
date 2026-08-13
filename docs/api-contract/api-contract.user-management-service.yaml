@@ -1,0 +1,314 @@
+openapi: 3.0.3
+info:
+  title: Hila Tours - User Management API
+  description: >
+    API for admin authentication (login, signup, logout, forgot password),
+    plus role/permission lookup. This service currently manages admin
+    accounts only — passengers are not authenticated users (see glossary.md).
+
+
+    ## Entity identity
+
+
+    An Admin is identified publicly by `id`, a server-generated RFC4122
+    uuid. Mongo's `_id` is internal-only (primary key and cross-collection
+    refs such as `Tour.createdBy` / `Seat.assignedBy`) and is stripped from
+    every response body alongside `__v` and `passwordHash`. The JWT `sub`
+    claim carries the Admin uuid, not the Mongo `_id`.
+
+
+    ## Roles & permissions
+
+
+    Every admin holds one or more `roles` (`admin` | `user` at launch — see
+    `database-rules.md`). A new signup always receives `["user"]`, which
+    grants no permissions — it is never auto-promoted to `["admin"]`.
+    Promoting an account to `admin` is a manual, out-of-band action today
+    (no endpoint yet — see Open Questions in `architecture.md`). The
+    admin's `roles` are embedded directly in the JWT payload at issuance so
+    that `tour-service` can authorize locally without calling back into this
+    service (see `architecture.md`, Cross-service permission checking). A
+    role change only takes effect the next time that admin logs in.
+  version: 1.2.0
+
+servers:
+  - url: http://localhost:3032/user-management-service/api
+    description: Local development server (via gateway)
+
+components:
+  securitySchemes:
+    bearerAuth:
+      type: http
+      scheme: bearer
+      bearerFormat: JWT
+
+  schemas:
+    LoginCredentials:
+      type: object
+      required:
+        - email
+        - password
+      properties:
+        email:
+          type: string
+          format: email
+          example: admin@example.com
+        password:
+          type: string
+          format: password
+          example: "123456"
+
+    SignupData:
+      type: object
+      description: >
+        Self-signup payload sent by the frontend `/signup` page. Any
+        client-supplied `roles` (or equivalent) field must be ignored
+        server-side — the account is always created with `["user"]`.
+      required:
+        - fullname
+        - email
+        - password
+      properties:
+        fullname:
+          type: string
+          minLength: 2
+          description: Full name, at least 2 characters (validated client-side too).
+        email:
+          type: string
+          format: email
+        password:
+          type: string
+          format: password
+          minLength: 6
+
+    AdminData:
+      type: object
+      description: >
+        Client-facing admin projection. Never includes `passwordHash`,
+        `_id` or `__v`.
+      properties:
+        id:
+          type: string
+          format: uuid
+          description: >
+            Public uuid identity for this admin, and the value carried in
+            the JWT `sub` claim. Mongo `_id` is internal-only and is never
+            serialized.
+          example: "9b1c7e50-2f84-4d3a-a6c1-8e5b0d2f4a76"
+        fullname:
+          type: string
+        email:
+          type: string
+        roles:
+          type: array
+          items:
+            type: string
+          description: >
+            Role names held by this admin (e.g. `["admin"]` or `["user"]`).
+            `["user"]` is the default on signup and grants no permissions.
+          example: ["admin"]
+        createdAt:
+          type: string
+          format: date-time
+
+    Role:
+      type: object
+      description: A named set of permissions assignable to an admin account.
+      properties:
+        id:
+          type: string
+          format: uuid
+        name:
+          type: string
+          example: "admin"
+        description:
+          type: string
+        permissions:
+          type: array
+          items:
+            type: string
+          description: >
+            Permission `key`s held by this role, in `<category>:<action>`
+            form (e.g. `tour:insert`, `seat:approve`). Seat-action keys
+            reuse the canonical action names from `glossary.md` — `bookings`,
+            `approve`, `cancel`, `toggleReserve`, `manualAssign`, `swapMove`.
+          example: ["tour:view", "tour:insert", "seat:approve"]
+
+    Permission:
+      type: object
+      description: A single named capability a role can hold.
+      properties:
+        id:
+          type: string
+          format: uuid
+        key:
+          type: string
+          example: "seat:approve"
+        description:
+          type: string
+        category:
+          type: string
+          enum: [tour, bus, seat]
+
+    ForgotPasswordRequest:
+      type: object
+      required:
+        - email
+      properties:
+        email:
+          type: string
+          format: email
+
+paths:
+  /auth/signup:
+    post:
+      tags:
+        - Authentication
+      summary: Register a new admin
+      description: >
+        Creates an admin account with `roles: ["user"]` (no permissions) —
+        never `["admin"]`. Promoting the account is a separate, manual
+        action; this endpoint cannot be used to self-assign the admin role.
+        The frontend `/signup` page deliberately discards the returned
+        token and redirects to `/login`, so signup never establishes an
+        authenticated session on its own.
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: '#/components/schemas/SignupData'
+      responses:
+        '200':
+          description: Admin registered and logged in successfully
+          content:
+            application/json:
+              schema:
+                type: string
+                description: >
+                  The raw JWT token. Payload includes `sub` (admin uuid) and
+                  `roles: ["user"]`.
+        '400':
+          description: Registration failed (e.g. email already exists)
+
+  /auth/login:
+    post:
+      tags:
+        - Authentication
+      summary: Login an admin
+      description: >
+        Validates credentials and returns a JWT token. The token's `sub`
+        claim is the admin's uuid (`AdminData.id`), never a Mongo `_id`.
+        The payload also embeds the admin's current `roles` array, so
+        `tour-service` can authorize without querying this service — a
+        role change made after this token was issued only takes effect on
+        the admin's next login.
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: '#/components/schemas/LoginCredentials'
+      responses:
+        '200':
+          description: Successful login
+          content:
+            application/json:
+              schema:
+                type: string
+                description: The raw JWT token
+                example: "eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9..."
+        '400':
+          description: Invalid email or password
+        '500':
+          description: Server error
+
+  /auth/logout:
+    post:
+      tags:
+        - Authentication
+      summary: Logout admin
+      description: Clears the loginToken cookie on the server.
+      security:
+        - bearerAuth: []
+      responses:
+        '200':
+          description: Successfully logged out
+          content:
+            application/json:
+              schema:
+                type: boolean
+                example: true
+
+  /auth/forgot-password:
+    post:
+      tags:
+        - Authentication
+      summary: Request a password reset
+      description: >
+        As currently listed, this is a single endpoint. NOTE (open question):
+        confirm whether this should stay a single-step flow (email in, reset
+        link/email sent, done) or become a 3-step flow like generateCode /
+        validateCode / changePassword used in a previous project. If a
+        3-step flow is wanted, split this into
+        /forgot-password/generate-code, /forgot-password/validate-code, and
+        /forgot-password/change-password.
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: '#/components/schemas/ForgotPasswordRequest'
+      responses:
+        '200':
+          description: Password reset instructions sent
+        '400':
+          description: Failed to process forgot-password request
+
+  /role:
+    get:
+      tags:
+        - Roles & Permissions
+      summary: List all roles
+      description: >
+        Read-only lookup, e.g. for an admin-management UI. NOTE (open
+        question, see `database-rules.md`): there is currently no endpoint
+        to *assign* a role to an account — that remains a manual/direct-DB
+        action. Add one (e.g. `PUT /admin/{id}/role`, gated behind a
+        `roles:assign` permission held only by `admin`) if that becomes a
+        real requirement.
+      security:
+        - bearerAuth: []
+      responses:
+        '200':
+          description: List of roles
+          content:
+            application/json:
+              schema:
+                type: array
+                items:
+                  $ref: '#/components/schemas/Role'
+        '401':
+          description: Missing or invalid token
+
+  /permission:
+    get:
+      tags:
+        - Roles & Permissions
+      summary: List all permissions
+      security:
+        - bearerAuth: []
+      responses:
+        '200':
+          description: List of permissions
+          content:
+            application/json:
+              schema:
+                type: array
+                items:
+                  $ref: '#/components/schemas/Permission'
+        '401':
+          description: Missing or invalid token
+
+security:
+  - bearerAuth: []

@@ -1,0 +1,47 @@
+# Plan: GatewayAdminLogin component
+
+Status: done
+Owner: Orchestrator
+Last updated: 2026-08-01
+
+## Goal
+Deliver GatewayAdminLogin component in the existing product.
+
+## Scope
+- In scope: changes needed for GatewayAdminLogin component
+- Out of scope: unrelated refactors, unrelated new features
+
+## Assumptions
+- Existing app and test setup are functional
+- Design source: raw_from_ai_studio/
+
+## Open Questions
+- Should this feature include analytics events? Recommended: no for first increment.
+    - *HUMAN ANSWER:*  no
+- Should this feature ship behind a flag? Recommended: no for demo speed.
+    - *HUMAN ANSWER:*  no
+    
+## Steps
+1. Frontend agent implements UI and defines API contract(s) if needed.
+2. Backend agents (user-management-service, tour-service) run in parallel — independent microservices.
+3. QA agent runs unit, integration, and e2e checks across frontend and both backend services.
+4. Security agent audits frontend, both backend services, and API contracts.
+
+## Validation
+- frontend: npm --prefix frontend run lint && npm --prefix frontend run build && npm --prefix frontend run test
+- backend/user-management-service: npm --prefix backend/user-management-service run test
+- backend/tour-service: npm --prefix backend/tour-service run test
+
+## Risks
+- Seat-lifecycle concurrency (tour-service) is the highest-risk area — see .rule/database-rules.md and .rule/testing-rules.md.
+- Existing tests may fail due to unrelated baseline issues.
+
+## Rollout Order
+1. FE changes
+2. BE changes (parallel)
+3. QA verification
+4. Security audit
+
+## Rollback
+- Revert branch commits for this task.
+- Restore previous ticket states and mark plan superseded if replaced.

@@ -1,0 +1,1031 @@
+openapi: 3.0.3
+info:
+  title: Hila Tours - Tour Service API
+  description: >
+    API for managing tours, buses, pickup points, seat requests/bookings,
+    and the manifest report. Tour/bus/seat-management routes require an
+    admin JWT; seat booking requests do not (passengers are not
+    authenticated — see glossary.md). All identity fields are `id` (a
+    server-generated uuid) — Mongo `_id` is internal-only and never
+    serialized to a client (see database-rules.md "External Identity").
+  version: 1.0.0
+
+servers:
+  - url: http://localhost:3033/tour-service/api
+    description: Local development server
+
+components:
+  securitySchemes:
+    bearerAuth:
+      type: http
+      scheme: bearer
+      bearerFormat: JWT
+
+  schemas:
+    Error:
+      type: object
+      properties:
+        message:
+          type: string
+
+    PickupPoint:
+      type: object
+      required:
+        - name
+      properties:
+        name:
+          type: string
+          example: "Central Station"
+        order:
+          type: integer
+          example: 1
+
+    Tour:
+      type: object
+      properties:
+        id:
+          type: string
+          format: uuid
+        name:
+          type: string
+        date:
+          type: string
+          format: date-time
+        description:
+          type: string
+          nullable: true
+        createdAt:
+          type: string
+          format: date-time
+        deletedAt:
+          type: string
+          format: date-time
+          nullable: true
+          description: Soft-delete timestamp. Null means the tour is active.
+        buses:
+          type: array
+          description: >
+            Only present on GET /tour and GET /tour/{tourId} (public,
+            unauthenticated routes) — buses embedded with their seats in the
+            PII-safe PublicSeat projection, so passengers can render the seat
+            map before logging in. Omitted on write responses (POST/PUT/DELETE
+            /tour), which return the tour document only. Excludes
+            soft-deleted buses.
+          items:
+            $ref: '#/components/schemas/BusWithPublicSeats'
+
+    TourInput:
+      type: object
+      required:
+        - name
+        - date
+      properties:
+        name:
+          type: string
+          example: "Eilat Weekend Tour"
+        date:
+          type: string
+          format: date-time
+        description:
+          type: string
+
+    Bus:
+      type: object
+      properties:
+        id:
+          type: string
+          format: uuid
+        tourId:
+          type: string
+          format: uuid
+        name:
+          type: string
+          example: "Bus 1"
+        seatLayout:
+          type: object
+          description: >
+            Either `{ positions: string[] }` / `{ seats: string[] }` (explicit
+            seat-position list), or `{ rows: number, columns: number | string[] }`
+            (grid — columns default to A, B, C... when given as a count).
+        pickupPoints:
+          type: array
+          items:
+            $ref: '#/components/schemas/PickupPoint'
+        createdAt:
+          type: string
+          format: date-time
+        deletedAt:
+          type: string
+          format: date-time
+          nullable: true
+          description: Soft-delete timestamp. Null means the bus is active.
+
+    BusInput:
+      type: object
+      required:
+        - name
+        - seatLayout
+      properties:
+        name:
+          type: string
+          example: "Bus 1"
+        seatLayout:
+          type: object
+        pickupPoints:
+          type: array
+          items:
+            $ref: '#/components/schemas/PickupPoint'
+
+    BusWithPublicSeats:
+      description: >
+        A Bus as embedded in a public tour response, plus its seats in the
+        PII-safe PublicSeat projection.
+      allOf:
+        - $ref: '#/components/schemas/Bus'
+        - type: object
+          properties:
+            totalSeats:
+              type: integer
+              description: >
+                Seat count for the bus. Drives the row/column layout the
+                passenger seat map is rendered from.
+              example: 52
+            seats:
+              type: array
+              items:
+                $ref: '#/components/schemas/PublicSeat'
+
+    PublicSeat:
+      type: object
+      description: >
+        PII-safe seat projection for UNAUTHENTICATED routes. Contains only
+        identity, position and status — never `passengerName`,
+        `passengerPhone`, `notes`, `pickupPointName`, `requestedAt`,
+        `approvedAt`, or admin attribution.
+
+        This mirrors the SEV-001 decision that locked
+        `GET /tour/{tourId}/buses/{busId}` behind `requireAdmin` precisely
+        because it returns the full Seat schema. Public callers get status
+        only, so an occupied seat renders as taken/pending with no indication
+        of who occupies it.
+      properties:
+        id:
+          type: string
+          format: uuid
+        position:
+          type: string
+          example: "3A"
+        status:
+          $ref: '#/components/schemas/SeatStatus'
+
+    Seat:
+      type: object
+      description: >
+        Full seat record, INCLUDING passenger PII. Only ever returned from
+        admin-authenticated routes (see SEV-001), or as the direct response to
+        the passenger's own booking request. Public listing routes must use
+        PublicSeat instead. Admin attribution (`assignedBy`) is internal-only
+        and never serialized, even here.
+      properties:
+        id:
+          type: string
+          format: uuid
+        busId:
+          type: string
+          format: uuid
+        position:
+          type: string
+          example: "3A"
+        status:
+          $ref: '#/components/schemas/SeatStatus'
+        pickupPointName:
+          type: string
+          nullable: true
+        passengerName:
+          type: string
+          nullable: true
+        passengerPhone:
+          type: string
+          nullable: true
+        notes:
+          type: string
+          nullable: true
+        requestedAt:
+          type: string
+          format: date-time
+          nullable: true
+        approvedAt:
+          type: string
+          format: date-time
+          nullable: true
+        updatedAt:
+          type: string
+          format: date-time
+
+    SeatStatus:
+      type: string
+      enum:
+        - available
+        - pending
+        - taken
+        - reserved
+      description: Canonical seat states — see glossary.md. Never use any other value.
+
+    SeatBookingRequest:
+      type: object
+      description: >
+        Only `passengerName` is required (alongside `seatIds`) —
+        `passengerPhone`/`pickupPointName` are optional (a passenger may not
+        have decided on a pickup point yet, or prefers not to share a phone).
+      required:
+        - seatIds
+        - passengerName
+      properties:
+        seatIds:
+          type: array
+          items:
+            type: string
+            format: uuid
+          description: One or more seat IDs being requested in a single booking (max 4).
+        passengerName:
+          type: string
+        passengerPhone:
+          type: string
+        pickupPointName:
+          type: string
+        notes:
+          type: string
+
+    SeatApproveRequest:
+      type: object
+      required:
+        - seatIds
+      properties:
+        seatIds:
+          type: array
+          items:
+            type: string
+            format: uuid
+          description: Pending seat IDs to approve → taken.
+
+    SeatCancelRequest:
+      type: object
+      required:
+        - seatIds
+      properties:
+        seatIds:
+          type: array
+          items:
+            type: string
+            format: uuid
+          description: Pending or taken seat IDs to release → available.
+
+    SeatToggleReserveRequest:
+      type: object
+      required:
+        - seatIds
+      properties:
+        seatIds:
+          type: array
+          items:
+            type: string
+            format: uuid
+          description: Seat IDs to lock as reserved, or unlock back to available.
+
+    SeatManualAssignRequest:
+      type: object
+      description: >
+        Admin manual-assign payload (F7). Accepts either an explicit `seatId`
+        (uuid) or the frontend's `seatNumbers` shape (1-based seat number,
+        resolved against the bus's seats in position order — only the first
+        entry is used). Only `passengerName` is required — `passengerPhone`/
+        `pickupPointName`/`pickupPoint` are optional (admin may not have that
+        info yet when reserving a seat manually).
+      required:
+        - passengerName
+      properties:
+        seatId:
+          type: string
+          format: uuid
+        seatNumbers:
+          type: array
+          items:
+            type: integer
+        passengerName:
+          type: string
+        passengerPhone:
+          type: string
+        pickupPointName:
+          type: string
+        pickupPoint:
+          type: string
+          description: Alternate field name accepted alongside pickupPointName.
+        notes:
+          type: string
+        status:
+          type: string
+          enum: [taken, pending]
+          description: Target status. Defaults to `taken` if omitted.
+      required:
+        - passengerName
+        - passengerPhone
+
+    SeatSwapMoveRequest:
+      type: object
+      description: >
+        Admin swap-move payload (F7). Accepts either 1-based seat numbers
+        (`fromSeat`/`toSeat`, resolved against the bus's seats in position
+        order) or explicit seat uuids (`fromSeatId`/`toSeatId`). If the
+        destination seat is available, the passenger is moved and the source
+        seat is vacated. If the destination is occupied, the two passengers
+        are swapped.
+      properties:
+        fromSeat:
+          type: integer
+        toSeat:
+          type: integer
+        fromSeatId:
+          type: string
+          format: uuid
+        toSeatId:
+          type: string
+          format: uuid
+
+    ManifestPassengerEntry:
+      type: object
+      properties:
+        id:
+          type: string
+          format: uuid
+          description: The seat's id.
+        seatPosition:
+          type: string
+        passengerName:
+          type: string
+          nullable: true
+        passengerPhone:
+          type: string
+          nullable: true
+        status:
+          $ref: '#/components/schemas/SeatStatus'
+
+    ManifestEntry:
+      type: object
+      properties:
+        pickupPointName:
+          type: string
+        passengers:
+          type: array
+          items:
+            $ref: '#/components/schemas/ManifestPassengerEntry'
+
+paths:
+  /tour:
+    get:
+      tags: [Tour]
+      summary: List all open (non-deleted) tours
+      description: >
+        Public — no auth required. Each tour embeds its buses, each with
+        seats in the PII-safe PublicSeat projection, so passengers can render
+        the seat map before logging in.
+      responses:
+        '200':
+          description: List of tours
+          content:
+            application/json:
+              schema:
+                type: array
+                items:
+                  $ref: '#/components/schemas/Tour'
+    post:
+      tags: [Tour]
+      summary: Create a tour
+      security:
+        - bearerAuth: []
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: '#/components/schemas/TourInput'
+      responses:
+        '200':
+          description: Tour created
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/Tour'
+        '400':
+          description: Missing required fields
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/Error'
+        '401':
+          description: Missing/invalid admin JWT
+
+  /tour/{tourId}:
+    get:
+      tags: [Tour]
+      summary: Get a single tour, with embedded buses/seats
+      description: Public — no auth required. Same public seat-map projection as GET /tour.
+      parameters:
+        - name: tourId
+          in: path
+          required: true
+          schema:
+            type: string
+            format: uuid
+      responses:
+        '200':
+          description: Tour
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/Tour'
+        '404':
+          description: Tour not found
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/Error'
+    put:
+      tags: [Tour]
+      summary: Update a tour
+      security:
+        - bearerAuth: []
+      parameters:
+        - name: tourId
+          in: path
+          required: true
+          schema:
+            type: string
+            format: uuid
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: '#/components/schemas/TourInput'
+      responses:
+        '200':
+          description: Tour updated
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/Tour'
+        '401':
+          description: Missing/invalid admin JWT
+        '404':
+          description: Tour not found
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/Error'
+    delete:
+      tags: [Tour]
+      summary: Soft-delete a tour
+      description: >
+        Sets `deletedAt` rather than removing the document (see
+        database-rules.md). Cascades: all of the tour's buses are also
+        soft-deleted, and their seats are hard-deleted (seats have no
+        independent soft-delete state).
+      security:
+        - bearerAuth: []
+      parameters:
+        - name: tourId
+          in: path
+          required: true
+          schema:
+            type: string
+            format: uuid
+      responses:
+        '200':
+          description: Tour soft-deleted
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/Tour'
+        '401':
+          description: Missing/invalid admin JWT
+        '404':
+          description: Tour not found or already deleted
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/Error'
+
+  /tour/{tourId}/buses:
+    get:
+      tags: [Bus]
+      summary: List a tour's buses
+      description: Public — no auth required. Buses only, no seats (see the per-bus GET for seats).
+      parameters:
+        - name: tourId
+          in: path
+          required: true
+          schema:
+            type: string
+            format: uuid
+      responses:
+        '200':
+          description: List of buses
+          content:
+            application/json:
+              schema:
+                type: array
+                items:
+                  $ref: '#/components/schemas/Bus'
+    post:
+      tags: [Bus]
+      summary: Create a bus (pre-creates its seats from seatLayout)
+      security:
+        - bearerAuth: []
+      parameters:
+        - name: tourId
+          in: path
+          required: true
+          schema:
+            type: string
+            format: uuid
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: '#/components/schemas/BusInput'
+      responses:
+        '200':
+          description: Bus created
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/Bus'
+        '400':
+          description: Missing/invalid name or seatLayout
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/Error'
+        '401':
+          description: Missing/invalid admin JWT
+
+  /tour/{tourId}/buses/{busId}:
+    get:
+      tags: [Bus]
+      summary: Get a bus and its full seat map (admin only)
+      description: >
+        Admin-only: seats embed passenger PII (passengerName, passengerPhone).
+        The public passenger-facing seat map does not use this route — it
+        reads the PublicSeat projection embedded in GET /tour instead
+        (see SEV-001).
+      security:
+        - bearerAuth: []
+      parameters:
+        - name: tourId
+          in: path
+          required: true
+          schema:
+            type: string
+            format: uuid
+        - name: busId
+          in: path
+          required: true
+          schema:
+            type: string
+            format: uuid
+      responses:
+        '200':
+          description: Bus details with seats
+          content:
+            application/json:
+              schema:
+                allOf:
+                  - $ref: '#/components/schemas/Bus'
+                  - type: object
+                    properties:
+                      seats:
+                        type: array
+                        items:
+                          $ref: '#/components/schemas/Seat'
+        '401':
+          description: Missing/invalid admin JWT
+        '404':
+          description: Bus not found
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/Error'
+    put:
+      tags: [Bus]
+      summary: Update a bus (name, pickup points)
+      description: >
+        `seatLayout` is intentionally not remapped on update, to avoid
+        destroying existing seat state.
+      security:
+        - bearerAuth: []
+      parameters:
+        - name: tourId
+          in: path
+          required: true
+          schema:
+            type: string
+            format: uuid
+        - name: busId
+          in: path
+          required: true
+          schema:
+            type: string
+            format: uuid
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: '#/components/schemas/BusInput'
+      responses:
+        '200':
+          description: Bus updated
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/Bus'
+        '401':
+          description: Missing/invalid admin JWT
+        '404':
+          description: Bus not found
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/Error'
+    delete:
+      tags: [Bus]
+      summary: Soft-delete a bus from a tour
+      description: >
+        Sets `deletedAt` on the bus rather than removing it from the
+        database. Its seats are hard-deleted (not soft-deleted individually)
+        since a seat has no meaning outside its bus.
+      security:
+        - bearerAuth: []
+      parameters:
+        - name: tourId
+          in: path
+          required: true
+          schema:
+            type: string
+            format: uuid
+        - name: busId
+          in: path
+          required: true
+          schema:
+            type: string
+            format: uuid
+      responses:
+        '200':
+          description: Bus soft-deleted
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/Bus'
+        '401':
+          description: Missing/invalid admin JWT
+        '404':
+          description: Bus not found or already deleted
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/Error'
+
+  /tour/{tourId}/buses/{busId}/seats/bookings:
+    post:
+      tags: [Seat]
+      summary: Passenger seat booking request (available → pending)
+      description: >
+        Public — no auth required (passengers are not authenticated accounts,
+        see glossary.md). Atomic per-seat: if ANY requested seat is no longer
+        available, the whole request fails with 409 and any seats already
+        claimed in this call are rolled back to available. Max 4 seats per
+        request.
+      parameters:
+        - name: tourId
+          in: path
+          required: true
+          schema:
+            type: string
+            format: uuid
+        - name: busId
+          in: path
+          required: true
+          schema:
+            type: string
+            format: uuid
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: '#/components/schemas/SeatBookingRequest'
+      responses:
+        '200':
+          description: The requested seats, now pending
+          content:
+            application/json:
+              schema:
+                type: array
+                items:
+                  $ref: '#/components/schemas/Seat'
+        '400':
+          description: Missing fields, invalid seatIds, or more than 4 seats requested
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/Error'
+        '409':
+          description: One or more requested seats are no longer available
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/Error'
+
+  /tour/{tourId}/buses/{busId}/seats/approve:
+    post:
+      tags: [Seat]
+      summary: Admin approve (pending → taken)
+      security:
+        - bearerAuth: []
+      parameters:
+        - name: tourId
+          in: path
+          required: true
+          schema:
+            type: string
+            format: uuid
+        - name: busId
+          in: path
+          required: true
+          schema:
+            type: string
+            format: uuid
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: '#/components/schemas/SeatApproveRequest'
+      responses:
+        '200':
+          description: The approved seats
+          content:
+            application/json:
+              schema:
+                type: array
+                items:
+                  $ref: '#/components/schemas/Seat'
+        '400':
+          description: One or more seats are not currently pending
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/Error'
+        '401':
+          description: Missing/invalid admin JWT
+
+  /tour/{tourId}/buses/{busId}/seats/cancel:
+    post:
+      tags: [Seat]
+      summary: Admin cancel/release (pending|taken → available)
+      security:
+        - bearerAuth: []
+      parameters:
+        - name: tourId
+          in: path
+          required: true
+          schema:
+            type: string
+            format: uuid
+        - name: busId
+          in: path
+          required: true
+          schema:
+            type: string
+            format: uuid
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: '#/components/schemas/SeatCancelRequest'
+      responses:
+        '200':
+          description: The released seats
+          content:
+            application/json:
+              schema:
+                type: array
+                items:
+                  $ref: '#/components/schemas/Seat'
+        '400':
+          description: One or more seats cannot be cancelled from their current status
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/Error'
+        '401':
+          description: Missing/invalid admin JWT
+
+  /tour/{tourId}/buses/{busId}/seats/toggle-reserve:
+    post:
+      tags: [Seat]
+      summary: Admin toggle-reserve (available ⇄ reserved)
+      security:
+        - bearerAuth: []
+      parameters:
+        - name: tourId
+          in: path
+          required: true
+          schema:
+            type: string
+            format: uuid
+        - name: busId
+          in: path
+          required: true
+          schema:
+            type: string
+            format: uuid
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: '#/components/schemas/SeatToggleReserveRequest'
+      responses:
+        '200':
+          description: The toggled seats
+          content:
+            application/json:
+              schema:
+                type: array
+                items:
+                  $ref: '#/components/schemas/Seat'
+        '400':
+          description: One or more seats are not available or reserved
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/Error'
+        '401':
+          description: Missing/invalid admin JWT
+
+  /tour/{tourId}/buses/{busId}/seats/manual-assign:
+    post:
+      tags: [Seat]
+      summary: Admin manual-assign (available → taken|pending)
+      description: Returns the bus's full, fresh seat list so the client can re-sync the seat map.
+      security:
+        - bearerAuth: []
+      parameters:
+        - name: tourId
+          in: path
+          required: true
+          schema:
+            type: string
+            format: uuid
+        - name: busId
+          in: path
+          required: true
+          schema:
+            type: string
+            format: uuid
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: '#/components/schemas/SeatManualAssignRequest'
+      responses:
+        '200':
+          description: The bus's full seat list
+          content:
+            application/json:
+              schema:
+                type: array
+                items:
+                  $ref: '#/components/schemas/Seat'
+        '400':
+          description: Missing fields, or the target seat is not available
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/Error'
+        '401':
+          description: Missing/invalid admin JWT
+
+  /tour/{tourId}/buses/{busId}/seats/swap-move:
+    post:
+      tags: [Seat]
+      summary: Admin swap-move a passenger between two seats
+      description: >
+        If the destination seat is available, the passenger is moved there
+        and the source seat is vacated. If the destination is occupied
+        (pending/taken), the two passengers are swapped. Both seats are
+        re-validated server-side against the status observed when the
+        decision was made.
+      security:
+        - bearerAuth: []
+      parameters:
+        - name: tourId
+          in: path
+          required: true
+          schema:
+            type: string
+            format: uuid
+        - name: busId
+          in: path
+          required: true
+          schema:
+            type: string
+            format: uuid
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: '#/components/schemas/SeatSwapMoveRequest'
+      responses:
+        '200':
+          description: The two affected seats
+          content:
+            application/json:
+              schema:
+                type: array
+                items:
+                  $ref: '#/components/schemas/Seat'
+        '400':
+          description: Invalid request, or the source seat has no passenger to move
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/Error'
+        '401':
+          description: Missing/invalid admin JWT
+        '404':
+          description: Seat not found
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/Error'
+        '409':
+          description: Source or destination seat changed concurrently during the operation
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/Error'
+
+  /tour/{tourId}/buses/{busId}/manifest:
+    get:
+      tags: [Manifest]
+      summary: Consolidated passenger manifest for a bus, grouped by pickup point
+      description: >
+        Only seats with an assigned passenger (pending/taken) are included by
+        default, unless the `status` filter selects a different status.
+        Groups are ordered by the bus's declared pickup-point order.
+      security:
+        - bearerAuth: []
+      parameters:
+        - name: tourId
+          in: path
+          required: true
+          schema:
+            type: string
+            format: uuid
+        - name: busId
+          in: path
+          required: true
+          schema:
+            type: string
+            format: uuid
+        - name: pickupPointName
+          in: query
+          schema:
+            type: string
+        - name: status
+          in: query
+          schema:
+            $ref: '#/components/schemas/SeatStatus'
+      responses:
+        '200':
+          description: Manifest entries grouped by pickup point
+          content:
+            application/json:
+              schema:
+                type: array
+                items:
+                  $ref: '#/components/schemas/ManifestEntry'
+        '401':
+          description: Missing/invalid admin JWT
+        '404':
+          description: Bus not found
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/Error'

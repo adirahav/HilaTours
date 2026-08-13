@@ -1,0 +1,27 @@
+{
+  "frontend": {
+    "id": "AGE-295",
+    "issueId": "da6b1db2-d8a6-487d-b5f3-46a91c9670eb",
+    "url": "https://linear.app/agents-example/issue/AGE-295/fe-implement-rbac-in-user-management-service-rolespermissions-are"
+  },
+  "userManagementService": {
+    "id": "AGE-296",
+    "issueId": "6ef20369-679d-4715-926d-abf118d80d6d",
+    "url": "https://linear.app/agents-example/issue/AGE-296/be-user-management-service-implement-rbac-in-user-management-service"
+  },
+  "tourService": {
+    "id": "AGE-297",
+    "issueId": "ca63479c-7636-4506-a0bd-12c2bbf2e5c2",
+    "url": "https://linear.app/agents-example/issue/AGE-297/be-tour-service-implement-rbac-in-user-management-service"
+  },
+  "qa": {
+    "id": "AGE-298",
+    "issueId": "87d13076-6691-4fee-bf83-fb5ba81bd042",
+    "url": "https://linear.app/agents-example/issue/AGE-298/qa-implement-rbac-in-user-management-service-rolespermissions-are"
+  },
+  "security": {
+    "id": "AGE-299",
+    "issueId": "dd85c5f0-8a70-4ad8-a555-df5f7d158f82",
+    "url": "https://linear.app/agents-example/issue/AGE-299/sec-implement-rbac-in-user-management-service-rolespermissions-are"
+  }
+}

@@ -1,0 +1,56 @@
+# Prioritized Backlog
+
+Current queue:
+- [x] Scaffold project | create package.json in frontend/ | scope: user-management-service,tour-service,qa
+
+- [x] Scaffold React app | npm create vite@latest frontend -- --template react-ts | scope: frontend,qa
+
+- [x] Install dependencies | npm install in root, frontend/ | scope: none
+
+- [x] Header component | raw_from_ai_studio/components/Header.tsx | scope: frontend,qa
+
+- [x] GatewayTours component | raw_from_ai_studio/components/GatewayTours.tsx | scope: frontend,qa
+
+- [x] GatewayAdminLogin component | raw_from_ai_studio/components/GatewayAdminLogin.tsx | scope: frontend,qa
+
+- [x] Gateway page | raw_from_ai_studio/pages/GatewayPage.tsx | scope: frontend,qa
+
+- [x] BusMap component | raw_from_ai_studio/components/BusMap.tsx | scope: frontend,qa
+
+- [x] Passenger page | raw_from_ai_studio/pages/PassengerPage.tsx | scope: frontend,tour-service,qa,security
+
+- [x] TourModal modal | raw_from_ai_studio/modal/TourModal.tsx | scope: frontend,qa
+
+- [x] BusModal modal | raw_from_ai_studio/modal/BusModal.tsx | scope: frontend,qa
+
+- [x] ManualAssignModal modal | raw_from_ai_studio/modal/ManualAssignModal.tsx | scope: frontend,qa
+
+- [x] SeatManagement component | raw_from_ai_studio/components/SeatManagement.tsx | scope: frontend,tour-service,qa,security
+
+- [x] TourManagement component | raw_from_ai_studio/components/TourManagement.tsx | scope: frontend,qa
+
+- [x] PassengerManifestReport component | raw_from_ai_studio/components/PassengerManifestReport.tsx | scope: frontend,qa,security
+
+- [x] Admin Dashboard page | raw_from_ai_studio/pages/AdminDashboard.tsx | scope: frontend,tour-service,qa,security
+
+- [x] Fix GET /tour missing embedded buses/seats: it never returns buses, but PassengerViewPage expects currentTour.buses[0].seats for the seat-map, breaking seat selection against the real backend; also re-decide what's public vs PII-safe in the response shape (see SEV-001 fix already applied to the single-bus route)
+
+- [x] Re-validate Header component (raw_from_ai_studio/components/Header.tsx) against the plan already used to build it — existing code only, do not rebuild or change behavior, QA never actually ran on it before this task closed
+
+- [x] Re-audit GatewayTours component (raw_from_ai_studio/components/GatewayTours.tsx) against the plan already used to build it — existing code only, do not rebuild, Security never actually ran on it before this task closed
+
+- [x] Re-audit Gateway page (raw_from_ai_studio/pages/GatewayPage.tsx) against the plan already used to build it — existing code only, do not rebuild, Security never actually ran on it before this task closed
+
+- [x] Re-audit ManualAssignModal modal (raw_from_ai_studio/modal/ManualAssignModal.tsx) against the plan already used to build it — existing code only, do not rebuild, Security never actually ran on it before this task closed
+
+- [x] Re-audit TourManagement component (raw_from_ai_studio/components/TourManagement.tsx) against the plan already used to build it — existing code only, do not rebuild, Security never actually ran on it before this task closed
+
+- [x] Add uuid identity layer, stop exposing Mongo _id to clients: every model (Admin, Tour, Bus, Seat) gets a generated uuid field (unique, indexed); _id stays internal-only for cross-collection refs and relations; every API response/embedded object exposes uuid as id and strips _id via the schema's toJSON transform (same pattern already used for stripping Admin.passwordHash); every controller/service that receives a client-supplied id resolves uuid→_id before querying; update every model, every controller/service, both API contracts, and every frontend type/service that currently reads ._id | scope: frontend,user-management-service,tour-service,qa,security
+
+- [x] Flatten backend/user-management-service/api/api/ to backend/user-management-service/api/: this service had a wrong doubled api/api/ nesting (should match tour-service's correct single-level api/<domain>/ structure, per the backend-service-layer skill and agents/backend/CLAUDE.md, both already corrected). Move every file up one directory level, fix every relative import/require path affected by the move, update tsconfig.json (rootDir/include) if it references the old path, and rerun the full user-management-service test suite to confirm nothing broke | scope: user-management-service,qa
+ 
+- [X] Remove stray docs/ folders under backend/: backend/docs/, backend/tour-service/docs/, and backend/user-management-service/docs/ each contain leftover agent-report/test files written there by mistake (a `cd backend/<service>` shell step caused relative docs/agent-reports/... writes to land under backend/ instead of the repo root — root cause already fixed in agents/backend/CLAUDE.md and the backend-service-layer skill). Diff each stray file against its real counterpart in docs/agent-reports/ and docs/tests/security/ before deleting — they are NOT byte-identical duplicates, review for any unique content worth preserving first, then delete the stray backend/**/docs/ folders entirely | scope: qa
+
+- [x] Signup page | raw_from_ai_studio/pages/Signup.tsx
+
+- [x] Implement RBAC in user-management-service (roles/permissions are currently spec-only in database-rules.md, product-definition.md, and api-contract.user-management-service.yaml — none of it is in code yet): add `Role` and `Permission` Mongoose models per database-rules.md; add a `roles` array field (default `["user"]`) to the Admin model; seed.js creates the `admin` (all tour/bus/seat permissions) and `user` (empty) role+permission documents on first run; signup always assigns `roles: ["user"]`, never `["admin"]`; embed `roles` in the JWT payload at signup/login (lib/jwt.ts JwtPayload currently has no roles field — add it); add `GET /role` and `GET /permission` read-only endpoints per the contract; tour-service's auth.middleware reads `role`/permissions from the verified JWT to authorize admin-only routes instead of just checking "is a valid admin JWT"

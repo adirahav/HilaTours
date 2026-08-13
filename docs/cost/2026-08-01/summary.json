@@ -1,0 +1,50 @@
+{
+  "tasks": [
+    {
+      "agentKey": "backend",
+      "label": "backend — create frontend/src/components/test_backend.tsx",
+      "inputTokens": 3,
+      "outputTokens": 349,
+      "cacheReadTokens": 15063,
+      "costUsd": 0.0103519,
+      "durationMs": 8436
+    },
+    {
+      "agentKey": "backend",
+      "label": "backend — You are the Backend Agent.",
+      "inputTokens": 6,
+      "outputTokens": 289,
+      "cacheReadTokens": 60569,
+      "costUsd": 0.02377395,
+      "durationMs": 14719
+    },
+    {
+      "agentKey": "frontend",
+      "label": "frontend — create backend/src/test_frontend.ts",
+      "inputTokens": 3,
+      "outputTokens": 322,
+      "cacheReadTokens": 15062,
+      "costUsd": 0.0099506,
+      "durationMs": 8580
+    },
+    {
+      "agentKey": "qa",
+      "label": "qa — create frontend/src/components/test_qa.tsx",
+      "inputTokens": 3,
+      "outputTokens": 276,
+      "cacheReadTokens": 15064,
+      "costUsd": 0.009268199999999999,
+      "durationMs": 7267
+    },
+    {
+      "agentKey": "security",
+      "label": "security — create frontend/src/components/test_security.tsx",
+      "inputTokens": 3,
+      "outputTokens": 332,
+      "cacheReadTokens": 15063,
+      "costUsd": 0.010096899999999999,
+      "durationMs": 7920
+    }
+  ],
+  "totalCostUsd": 0.06344155
+}

@@ -1,0 +1,10 @@
+/// <reference types="vite/client" />
+
+interface ImportMetaEnv {
+  readonly VITE_USER_MANAGEMENT_API_URL: string
+  readonly VITE_TOUR_API_URL: string
+}
+
+interface ImportMeta {
+  readonly env: ImportMetaEnv
+}
