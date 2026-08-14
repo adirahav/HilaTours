@@ -2,6 +2,7 @@ export interface AdminUser {
   email: string
   name: string
   isLoggedIn: boolean
+  roles: string[]
 }
 
 export interface LoginCredentials {

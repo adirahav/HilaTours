@@ -45,7 +45,7 @@ describe('Header', () => {
 
   const loginAdmin = () =>
     useStore.setState({
-      adminUser: { email: 'a@b.com', name: 'הילה', isLoggedIn: true },
+      adminUser: { email: 'a@b.com', name: 'הילה', isLoggedIn: true, roles: ['admin'] },
       authToken: 'token-123'
     })
 
@@ -75,7 +75,7 @@ describe('Header', () => {
 
   it('renders admin control-panel title, tabs and greeting when admin is logged in', () => {
     useStore.setState({
-      adminUser: { email: 'a@b.com', name: 'הילה', isLoggedIn: true }
+      adminUser: { email: 'a@b.com', name: 'הילה', isLoggedIn: true, roles: ['admin'] }
     })
     renderAt('/admin/seats')
 
@@ -91,7 +91,7 @@ describe('Header', () => {
 
   it('marks the active admin tab with aria-current', () => {
     useStore.setState({
-      adminUser: { email: 'a@b.com', name: 'הילה', isLoggedIn: true }
+      adminUser: { email: 'a@b.com', name: 'הילה', isLoggedIn: true, roles: ['admin'] }
     })
     renderAt('/admin/tours')
 

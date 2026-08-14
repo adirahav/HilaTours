@@ -9,7 +9,7 @@ export interface AuthSlice {
   clearAuth: () => void
 }
 
-const EMPTY_ADMIN: AdminUser = { email: '', name: '', isLoggedIn: false }
+const EMPTY_ADMIN: AdminUser = { email: '', name: '', isLoggedIn: false, roles: [] }
 
 export const createAuthSlice: StateCreator<AuthSlice> = set => ({
   adminUser: EMPTY_ADMIN,

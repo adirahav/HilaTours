@@ -85,7 +85,7 @@ describe('GatewayAdminLogin (wired inside GatewayPage) — admin auth security',
   beforeEach(() => {
     vi.clearAllMocks()
     localStorage.clear()
-    useStore.setState({ authToken: null, adminUser: { email: '', name: '', isLoggedIn: false } })
+    useStore.setState({ authToken: null, adminUser: { email: '', name: '', isLoggedIn: false, roles: [] } })
   })
 
   it('renders with no pre-filled demo credentials (unlike the design source admin@bus.co.il / admin123)', () => {

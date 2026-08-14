@@ -10,11 +10,15 @@ const TOKEN_KEY = 'hila_admin_token'
 // POST /auth/login returns the raw JWT string (see api-contract, not an
 // { token, admin } envelope) — email/username live only in the payload, so
 // decode it locally rather than making a second round-trip.
-function decodeAdminFromToken(token: string): Pick<AdminUser, 'email' | 'name'> {
+function decodeAdminFromToken(token: string): Pick<AdminUser, 'email' | 'name' | 'roles'> {
   const base64 = token.split('.')[1].replace(/-/g, '+').replace(/_/g, '/')
   const bytes = Uint8Array.from(atob(base64), c => c.charCodeAt(0))
   const payload = JSON.parse(new TextDecoder('utf-8').decode(bytes))
-  return { email: payload.email ?? '', name: payload.username ?? '' }
+  return {
+    email: payload.email ?? '',
+    name: payload.username ?? '',
+    roles: Array.isArray(payload.roles) ? payload.roles : []
+  }
 }
 
 export const authService = {

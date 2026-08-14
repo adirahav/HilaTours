@@ -68,7 +68,7 @@ function renderAt(path_: string) {
 
 function loginState() {
   return {
-    adminUser: { email: 'a@b.com', name: 'הילה', isLoggedIn: true },
+    adminUser: { email: 'a@b.com', name: 'הילה', isLoggedIn: true, roles: ['admin'] },
     authToken: 'token-123'
   }
 }
