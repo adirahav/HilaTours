@@ -35,8 +35,18 @@ function createClient(baseURL: string): AxiosInstance {
   return client
 }
 
-export const userManagementClient = createClient(import.meta.env.VITE_USER_MANAGEMENT_API_URL ?? '')
-export const tourClient = createClient(import.meta.env.VITE_TOUR_API_URL ?? '')
+// In production the app is served by `common-service`, the single public-facing
+// gateway: it hosts the built frontend and reverse-proxies `/api/*` to the two
+// private business services. So every client collapses to one same-origin
+// `/api/` prefix and the frontend never addresses either service directly.
+// In development each service is still hit on its own origin via the VITE_* env vars.
+const isDev = import.meta.env.DEV
+
+const userManagementBaseUrl = isDev ? (import.meta.env.VITE_USER_MANAGEMENT_API_URL ?? '') : '/api/'
+const tourBaseUrl = isDev ? (import.meta.env.VITE_TOUR_API_URL ?? '') : '/api/'
+
+export const userManagementClient = createClient(userManagementBaseUrl)
+export const tourClient = createClient(tourBaseUrl)
 
 export const httpService = {
   get<T>(client: AxiosInstance, url: string, config?: AxiosRequestConfig) {

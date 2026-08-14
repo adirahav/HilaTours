@@ -105,6 +105,37 @@ Handoff to Backend Agent:
 STATUS: DONE
 ```
 
+### Step 8: Deploy setup (the hosting platform)
+
+Only do this if the ticket explicitly asks for deploy/production setup.
+
+1. In `frontend/src/services/http.service.ts`, `BASE_URL` must resolve to a single `/api/` prefix in production — `common-service` is the dedicated gateway in production and proxies auth/tour/bus/seat/manifest calls internally to the two business services, so the frontend never needs to know about either of them directly:
+   ```ts
+   const BASE_URL = (process.env.NODE_ENV !== 'development')
+     ? '/api/'
+     : '//localhost:3032/api/'
+   ```
+   This replaces using `VITE_USER_MANAGEMENT_API_URL` / `VITE_TOUR_API_URL` directly at request time in production — those two env vars may still exist for local dev, but production traffic must go through `common-service`'s single gateway prefix, never two separate origins.
+
+2. Confirm `package.json` has the build script (Vite scaffolds this by default):
+   ```json
+   "scripts": {
+     "build": "vite build"
+   }
+   ```
+
+3. In `vite.config.ts`, point the build output at `common-service`'s static folder — that's the dedicated gateway service that serves the frontend in production (see `agents/backend/CLAUDE.md`'s `common-service` section):
+   ```ts
+   export default defineConfig({
+     build: {
+       outDir: '../backend/common-service/public',
+       emptyOutDir: true
+     }
+   })
+   ```
+
+4. Do not run `npm run build` as part of the frontend agent's normal ticket workflow — Step 6 "Run checks" already covers `lint` + `build` for validation. Deploy-time build/serve is a separate concern handled by the backend agent's gateway setup.
+
 ## Rules
 - Follow `.rule/coding-rules.md`, `.rule/naming-rules.md`, `.rule/style-rules.md`, `.rule/error-handling-rules.md`, `.rule/ui-rules.md`, `.rule/testing-rules.md`, `.rule/glossary.md`, and `.rule/database-rules.md` — they are the source of truth for conventions, not this file.
 - Tailwind utility classes only — no custom CSS classes/modules, no inline `style={{}}` except for genuinely runtime-computed values (charts, measured offsets).

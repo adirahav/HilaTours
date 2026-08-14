@@ -2,14 +2,12 @@ import { useEffect, useRef, useState } from 'react'
 import type { Seat } from '../../types/seat.types'
 import { toast } from 'sonner'
 import {
-  Info,
   Check,
   CheckCircle,
   Clock,
   User,
   Lock,
   LockOpen,
-  Move,
   TriangleAlert,
   X
 } from 'lucide-react'
@@ -57,10 +55,10 @@ export function BusMap({
   onQuickApprove,
   onQuickCancel
 }: BusMapProps) {
-  const [hoveredSeat, setHoveredSeat] = useState<Seat | null>(null)
+  const [, setHoveredSeat] = useState<Seat | null>(null)
   const [draggedSeatNumber, setDraggedSeatNumber] = useState<number | null>(null)
   const [dragOverSeatNumber, setDragOverSeatNumber] = useState<number | null>(null)
-  const [moveMode, setMoveMode] = useState(false)
+  const [moveMode] = useState(false)
   const [moveSourceSeatNumber, setMoveSourceSeatNumber] = useState<number | null>(null)
   const [quickMenuSeatNumber, setQuickMenuSeatNumber] = useState<number | null>(null)
   const longPressTimer = useRef<ReturnType<typeof setTimeout> | null>(null)

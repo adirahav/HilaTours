@@ -31,9 +31,10 @@
 	- `Status:` `draft|active|done|superseded`
 	- `Owner:`
 	- `Last updated:` `YYYY-MM-DD`
-	- `Scope-Agents:` comma-separated subset of `frontend, user-management-service, tour-service, qa, security` — or `none` for pure tooling/config tasks with no product code. This is machine-parsed by the orchestrator to decide which agents actually run for this task, so it must be accurate, not a default.
+	- `Scope-Agents:` comma-separated subset of `frontend, user-management-service, tour-service, common-service, qa, security` — or `none` for pure tooling/config tasks with no product code. This is machine-parsed by the orchestrator to decide which agents actually run for this task, so it must be accurate, not a default.
 		- Include `qa` unless the task genuinely has nothing to validate (e.g. dependency installs).
 		- Include a backend service only if this task adds/changes code in it, OR — even when only "confirming" existing endpoints — the `Risks` section of this same plan calls out a concurrency, auth, or data-integrity risk in that service. Do not exclude a backend service solely because "no new endpoints are expected" if the Risks section says otherwise; that self-contradiction is a known mistake (see plan 021, Admin Dashboard page, which excluded tour-service from scope while its own Risks section flagged bulk-approve as a stale-state race).
+		- Include `common-service` whenever the task's own Steps section assigns it work (e.g. deploy/production-setup tasks per `agents/backend/CLAUDE.md`'s `common-service` section) — omitting it from this line while still describing it as a deliverable in Steps is the same self-contradiction as the backend-service mistake above: the orchestrator only launches agents listed here, regardless of what Steps says. For a task that does not touch the gateway, leave it out — it is a stateless proxy/static host with no business logic, not a default inclusion like `qa`.
 		- Include `security` for anything touching auth, admin mutations, PII, or an integration point (a page/component that wires together several already-built pieces) — not only for tasks that add brand-new endpoints.
 
 ## Required Plan Sections

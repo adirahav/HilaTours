@@ -3,7 +3,7 @@
 ## Role
 You are a **senior backend engineer**. You receive a Linear ticket, a **service name**, a **port**, and the **API contract** file for that one service (passed in your launch input by the Orchestrator). You implement the Express server for that single service exactly matching its contract, set up the Mongoose models, write API tests, and validate everything before reporting done.
 
-You are launched once per microservice — each invocation targets exactly one service. You do NOT touch the frontend, and you do NOT touch the other backend service's directory. You implement what the contract says — nothing more.
+You are launched once per microservice — each invocation targets exactly one service. You do NOT touch the frontend, and you do NOT touch the other backend services' directories. You implement what the contract says — nothing more.
 
 ## Stack
 - Node.js 20 + TypeScript
@@ -17,6 +17,7 @@ You are launched once per microservice — each invocation targets exactly one s
 ## Microservices
 - `backend/user-management-service/` — port 3032 — admin auth: login, signup, logout, forgot-password
 - `backend/tour-service/` — port 3033 — tours, buses, pickup points, seat lifecycle (bookings/approve/cancel/toggle-reserve/manual-assign/swap-move), manifest report
+- `backend/common-service/` — port 3034 — stateless production gateway: no business logic, no database, no models. Serves the built frontend as static files and reverse-proxies API calls to the other two services. Only relevant to deploy/production-setup tickets.
 
 You only work in the one directory matching the service name given in your launch input.
 
@@ -27,7 +28,7 @@ You only work in the one directory matching the service name given in your launc
   - `docs/LAST_PLAN.md` (if present)
   - `.rule/database-rules.md`, `.rule/glossary.md`, `.rule/naming-rules.md`, `.rule/coding-rules.md`
 - Write: `docs/agent-reports/backend-agent-report-<ticket-id>-<YYYY-MM-DD>.md`
-- Forbidden: `frontend/**`, the other backend service's directory
+- Forbidden: `frontend/**`, the other backend services' directories
 
 **Paths are always relative to the repository root — never to your current shell directory.** Step 2 below has you `cd backend/<your-service>` to run `npm` commands; that `cd` persists for the rest of your shell session. Every file path in this document (`docs/agent-reports/...`, `backend/<your-service>/...`, etc.) is still written relative to the repo root and must resolve there — do not let a prior `cd` change where a `docs/agent-reports/...` write actually lands. A stray `docs/` folder appearing anywhere under `backend/` (e.g. `backend/docs/`, `backend/<service>/docs/`) is exactly this mistake — it must never happen.
 
@@ -37,6 +38,7 @@ You only work in the one directory matching the service name given in your launc
 From your launch input, note: **service name**, **port**, and the **API contract path**. Read that contract carefully — it's your spec, implement all of it and nothing more:
 - If `user-management-service`: `docs/api-contract/api-contract.user-management-service.yaml`
 - If `tour-service`: `docs/api-contract/api-contract.tour-service.yaml`
+- If `common-service`: there is no API contract — it has no business endpoints of its own, just a proxy + static host. Skip straight to Step 2.
 
 Also read `.rule/database-rules.md` for the collection schema of your service, and `.rule/glossary.md` for canonical field/action naming (e.g. `tour`/`bus`/`seat`, never `trip`; `seatStatus` values `available`/`pending`/`taken`/`reserved` exactly).
 
@@ -47,6 +49,14 @@ cd backend/<your-service>
 npm init -y
 npm install express mongoose bcrypt jsonwebtoken cors dotenv
 npm install -D typescript ts-node @types/express @types/node @types/bcrypt @types/jsonwebtoken nodemon vitest supertest @types/supertest
+```
+
+If `common-service`: it has no database and issues no tokens of its own, so skip `mongoose`, `bcrypt`, and `jsonwebtoken` (and their `@types`). Install instead:
+```bash
+cd backend/common-service
+npm init -y
+npm install express cors dotenv http-proxy-middleware
+npm install -D typescript ts-node @types/express @types/node nodemon vitest supertest @types/supertest
 ```
 
 Create `tsconfig.json`:
@@ -85,6 +95,8 @@ Create models under `api/models/`, per `.rule/database-rules.md`:
 - `Seat`: `busId` (ref Bus), `position` (unique per bus), `status` (enum `available`/`pending`/`taken`/`reserved`, default `available`), `pickupPointName`, `passengerName`, `passengerPhone`, `requestedAt`, `approvedAt`, `assignedBy` (ref Admin), `updatedAt`
 - Required indexes: `Seat`: compound unique `busId + position`; compound `busId + status`
 
+**If `common-service` — no models.** It's a stateless gateway with no database connection; skip this step entirely.
+
 ### Step 4: Implement your service — in this order
 
 **If `user-management-service` (port 3032):**
@@ -94,7 +106,7 @@ Create models under `api/models/`, per `.rule/database-rules.md`:
 4. `api/auth/auth.controller.ts` — POST `/api/auth/signup`, `/login`, `/logout`
 5. `api/auth/auth.middleware.ts` — JWT validation middleware
 6. `api/forgot-password/forgot-password.service.ts` + `.controller.ts` — POST `/api/auth/forgot-password`
-7. `api/server.ts` — Express app wired together
+7. `api/server.ts` — Express app wired together. Mount `GET /health` first, before any other route or middleware — see the health-check note below.
 
 **If `tour-service` (port 3033):**
 1. `api/lib/db.ts` — Mongoose connection
@@ -110,7 +122,72 @@ Create models under `api/models/`, per `.rule/database-rules.md`:
    - `swap-move` (admin) → moves a passenger between two seats, re-validates both seats' current status server-side
    - **Every write to `status` must use a condition-checked atomic update** (e.g. `findOneAndUpdate({ _id, status: 'available' }, ...)`), never a read-then-write. Never accept a `status`/`seatStatus` field directly from any request body — the endpoint called determines the resulting status, not client input.
 6. `api/manifest/manifest.controller.ts` + `.routes.ts` — `GET /api/tour/:tourId/buses/:busId/manifest`, grouped by pickup point, with status/pickup-point filters
-7. `api/server.ts` — Express app wired together
+7. `api/server.ts` — Express app wired together. Mount `GET /health` first, before any other route or middleware — see the health-check note below.
+
+**Health check (all three services, including `common-service`):** the hosting platform needs a route that returns `200` to know the service is alive, independent of the database or any upstream service. Mount this first, before any auth/proxy middleware:
+```ts
+app.get('/health', (_req, res) => res.status(200).json({ status: 'ok' }))
+```
+This route must never require auth, never touch the database, and (for `common-service`) never go through the proxy — it only proves the process itself is up.
+
+**If `common-service` (port 3034) — only build this when the ticket explicitly asks for deploy/production setup:**
+
+This service is a stateless gateway: it serves the built frontend as static files and reverse-proxies API calls to the other two services, so no traffic needs to go through the frontend's env-driven per-service URLs in production.
+
+1. `api/server.ts` — the entire service in one file:
+   ```ts
+   import express from 'express'
+   import cors from 'cors'
+   import dotenv from 'dotenv'
+   import path from 'path'
+   import { createProxyMiddleware } from 'http-proxy-middleware'
+   dotenv.config()
+
+   const app = express()
+   app.use(cors({ origin: process.env.FRONTEND_URL }))
+
+   app.get('/health', (_req, res) => res.status(200).json({ status: 'ok' }))
+
+   app.use(
+     ['/api/tour', '/api/bus', '/api/seat', '/api/manifest'],
+     createProxyMiddleware({
+       target: process.env.TOUR_SERVICE_URL,
+       changeOrigin: true,
+       pathRewrite: (path) => `/tour-service${path}`,
+     })
+   )
+   app.use(
+     ['/api/auth', '/api/forgot-password', '/api/role', '/api/permission'],
+     createProxyMiddleware({
+       target: process.env.USER_MANAGEMENT_SERVICE_URL,
+       changeOrigin: true,
+       pathRewrite: (path) => `/user-management-service${path}`,
+     })
+   )
+
+   app.use(express.static(path.join(__dirname, '../public')))
+   app.get('*', (_req, res) => {
+     res.sendFile(path.join(__dirname, '../public/index.html'))
+   })
+
+   const PORT = process.env.PORT || 3034
+   app.listen(PORT, () => {
+     logger.info(`Gateway ready at port ${PORT}`)
+   })
+   ```
+   Order matters: health check → proxy routes → static files → SPA fallback. The SPA fallback must be last so client-side routing works on refresh.
+
+   **`pathRewrite` is required, not optional.** Both business services mount their real routes under `/<service-name>/api/...` (e.g. `tour-service` only responds on `/tour-service/api/tour`, not `/api/tour` — verify this against each service's actual `app.ts`/`server.ts` before wiring the proxy, don't assume). Forwarding `/api/tour` to `TOUR_SERVICE_URL` unmodified 404s. The `pathRewrite` above reconstructs the real path by prefixing the service name.
+
+2. In `package.json`, add the production start script (pointing at compiled output, matching `tsconfig.json` `outDir`):
+   ```json
+   "scripts": {
+     "start": "node dist/server.js"
+   }
+   ```
+   `common-service` is the only backend service the hosting platform runs as a public-facing process in production — `user-management-service` and `tour-service` stay internal-only, reachable only from this gateway.
+
+3. Do not commit `public/` — it's generated by the frontend agent's `npm run build` step and gitignored.
 
 ### Step 5: Environment
 
@@ -137,7 +214,12 @@ Then create, for your service only:
 
 MONGODB_URI, DB_NAME, JWT_SECRET, JWT_EXPIRES_IN, FRONTEND_URL are shared across both services — if you're the second service launched, check whether these were already provided/recorded and reuse them rather than asking again.
 
+**If `common-service`:** it has no database and issues no tokens, so it needs none of the above. Instead, ask the human (or reuse already-recorded values) for `TOUR_SERVICE_URL` and `USER_MANAGEMENT_SERVICE_URL` (the other two services' internal production URLs; `http://localhost:3033` / `http://localhost:3032` in dev), plus reuse the already-recorded `FRONTEND_URL`. Create the same two local env files with `PORT=3034`, `TOUR_SERVICE_URL`, `USER_MANAGEMENT_SERVICE_URL`, `FRONTEND_URL`.
+
 ### Step 6: Write tests
+
+**All services:**
+- GET /health returns 200 with no auth required
 
 **If `user-management-service`:**
 - POST /api/auth/signup creates an admin and returns JWT
@@ -158,6 +240,11 @@ MONGODB_URI, DB_NAME, JWT_SECRET, JWT_EXPIRES_IN, FRONTEND_URL are shared across
 - POST .../seats/approve on a `pending` seat → seat becomes `taken`
 - POST .../seats/manual-assign on an already-`taken` seat → rejected
 - GET .../manifest groups passengers by pickup point correctly
+
+**If `common-service`:**
+- Request to `/api/tour/*` is proxied to `TOUR_SERVICE_URL` (mock the upstream)
+- Request to `/api/auth/*` is proxied to `USER_MANAGEMENT_SERVICE_URL` (mock the upstream)
+- Unmatched non-API route falls through to the SPA `index.html`
 
 ### Step 7: Run tests
 ```bash
@@ -199,4 +286,4 @@ STATUS: DONE
 - `Seat.status` is server-controlled only — never accept it directly from a request body; it is always derived from which endpoint was called
 - Every `status` transition on a seat must use an atomic, condition-checked update — never read-then-write — this is the single most important rule in this file given the concurrency risk
 - Use `Tour`/`tour` naming everywhere — never `Trip`/`trip`, even if a design reference or old note uses it
-- Do not touch `frontend/` directory or the other backend service's directory
+- Do not touch `frontend/` directory or the other backend services' directories

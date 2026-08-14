@@ -1,6 +1,6 @@
 # 033 — Prepare the project for production deploy: add `common-service` gateway (port 3034)
 
-Status: active
+Status: done
 Owner: orchestrator
 Last updated: 2026-08-14
 Scope-Agents: frontend, tour-service, user-management-service, common-service, qa

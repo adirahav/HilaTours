@@ -1,27 +1,32 @@
 {
   "frontend": {
-    "id": "AGE-295",
-    "issueId": "da6b1db2-d8a6-487d-b5f3-46a91c9670eb",
-    "url": "https://linear.app/agents-example/issue/AGE-295/fe-implement-rbac-in-user-management-service-rolespermissions-are"
+    "id": "AGE-300",
+    "issueId": "64784317-1c46-468b-b8c7-a2247177fb02",
+    "url": "https://linear.app/agents-example/issue/AGE-300/fe-prepare-the-project-for-production-deploy-add-a-new-stateless"
   },
   "userManagementService": {
-    "id": "AGE-296",
-    "issueId": "6ef20369-679d-4715-926d-abf118d80d6d",
-    "url": "https://linear.app/agents-example/issue/AGE-296/be-user-management-service-implement-rbac-in-user-management-service"
+    "id": "AGE-301",
+    "issueId": "e8ea973f-6ed4-4a80-8602-72eae5531835",
+    "url": "https://linear.app/agents-example/issue/AGE-301/be-user-management-service-prepare-the-project-for-production-deploy"
   },
   "tourService": {
-    "id": "AGE-297",
-    "issueId": "ca63479c-7636-4506-a0bd-12c2bbf2e5c2",
-    "url": "https://linear.app/agents-example/issue/AGE-297/be-tour-service-implement-rbac-in-user-management-service"
+    "id": "AGE-302",
+    "issueId": "ef17adaa-fa31-44cf-bdbb-37fb47ca8db2",
+    "url": "https://linear.app/agents-example/issue/AGE-302/be-tour-service-prepare-the-project-for-production-deploy-add-a-new"
+  },
+  "commonService": {
+    "id": "AGE-303",
+    "issueId": "ab3ff4cf-a603-4933-8a8f-621c99b4dfa1",
+    "url": "https://linear.app/agents-example/issue/AGE-303/be-common-service-prepare-the-project-for-production-deploy-add-a-new"
   },
   "qa": {
-    "id": "AGE-298",
-    "issueId": "87d13076-6691-4fee-bf83-fb5ba81bd042",
-    "url": "https://linear.app/agents-example/issue/AGE-298/qa-implement-rbac-in-user-management-service-rolespermissions-are"
+    "id": "AGE-304",
+    "issueId": "16a3e269-c8b3-4a3f-858e-aace47c5e2d5",
+    "url": "https://linear.app/agents-example/issue/AGE-304/qa-prepare-the-project-for-production-deploy-add-a-new-stateless"
   },
   "security": {
-    "id": "AGE-299",
-    "issueId": "dd85c5f0-8a70-4ad8-a555-df5f7d158f82",
-    "url": "https://linear.app/agents-example/issue/AGE-299/sec-implement-rbac-in-user-management-service-rolespermissions-are"
+    "id": "AGE-305",
+    "issueId": "c713b163-5390-4c62-9fbf-38c17fcc774e",
+    "url": "https://linear.app/agents-example/issue/AGE-305/sec-prepare-the-project-for-production-deploy-add-a-new-stateless"
   }
 }

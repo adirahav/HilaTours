@@ -7,7 +7,7 @@ create Linear tickets, and then launch the correct specialist agent for each tic
 
 You do NOT write application code. You plan, coordinate, and sequence.
 
-This repo is a **monorepo** containing `frontend/` and `backend/` (two microservices: `user-management-service`, `tour-service`) — both are built and run from here, via `agents/frontend/CLAUDE.md` and `agents/backend/CLAUDE.md`.
+This repo is a **monorepo** containing `frontend/` and `backend/` (three microservices: `user-management-service`, `tour-service`, `common-service`) — all are built and run from here, via `agents/frontend/CLAUDE.md` and `agents/backend/CLAUDE.md`. `common-service` carries no business logic — it's the production gateway (serves the built frontend as static files, reverse-proxies to the other two services) and is only relevant to deploy/production-setup tickets, not regular feature tickets.
 
 ## Tools Available
 - Read files (PRD, design files from `raw_from_ai_studio/`, API contracts)
@@ -174,6 +174,7 @@ App is ready. Run:
 cd frontend && npm run dev                              # port 5173
 cd backend/user-management-service && npm run dev       # port 3032
 cd backend/tour-service && npm run dev                  # port 3033
+cd backend/common-service && npm run dev                # port 3034 — production gateway only, dev-mode not required for local feature work
 
 QA report: docs/agent-reports/qa-agent-report-HILA-4-<date>.md
 Security report: docs/agent-reports/security-agent-report-HILA-5-<date>.md

@@ -1,0 +1,98 @@
+# Render Blueprint for Hila Tours.
+# Three backend services + shared env var groups, matching the architecture
+# in agents/backend/CLAUDE.md: common-service is the only public web service
+# (static frontend host + reverse proxy); user-management-service and
+# tour-service are private services reachable only from common-service.
+#
+# Docs: https://render.com/docs/blueprint-spec
+
+envVarGroups:
+  - name: hila-tours-db-auth
+    envVars:
+      - key: MONGODB_URI
+        sync: false # set manually in the Render dashboard — never commit this value
+      - key: DB_NAME
+        value: HILA_TOURS_DB
+      - key: JWT_SECRET
+        generateValue: true # Render generates one value and shares it across every service in this group
+      - key: JWT_EXPIRES_IN
+        value: 7d
+
+  - name: hila-tours-frontend-url
+    envVars:
+      - key: FRONTEND_URL
+        sync: false # set manually once the common-service URL is known (see note below)
+
+services:
+  # ── common-service: public gateway (static frontend + reverse proxy) ──────
+  - type: web
+    name: common-service
+    runtime: node
+    plan: starter
+    region: oregon
+    rootDir: backend/common-service
+    buildCommand: npm install && npx tsc
+    startCommand: npm start
+    healthCheckPath: /health
+    envVarGroups:
+      - hila-tours-frontend-url
+    envVars:
+      - key: PORT
+        value: 3034
+      - key: TOUR_SERVICE_URL
+        fromService:
+          type: pserv
+          name: tour-service
+          property: hostport
+      - key: USER_MANAGEMENT_SERVICE_URL
+        fromService:
+          type: pserv
+          name: user-management-service
+          property: hostport
+
+  # ── user-management-service: private, auth only ───────────────────────────
+  - type: pserv
+    name: user-management-service
+    runtime: node
+    plan: starter
+    region: oregon
+    rootDir: backend/user-management-service
+    buildCommand: npm install && npx tsc
+    startCommand: npm start
+    healthCheckPath: /health
+    envVarGroups:
+      - hila-tours-db-auth
+      - hila-tours-frontend-url
+    envVars:
+      - key: PORT
+        value: 3032
+
+  # ── tour-service: private, tour/bus/seat domain ────────────────────────────
+  - type: pserv
+    name: tour-service
+    runtime: node
+    plan: starter
+    region: oregon
+    rootDir: backend/tour-service
+    buildCommand: npm install && npx tsc
+    startCommand: npm start
+    healthCheckPath: /health
+    envVarGroups:
+      - hila-tours-db-auth
+      - hila-tours-frontend-url
+    envVars:
+      - key: PORT
+        value: 3033
+
+# ── Manual one-time setup after the first deploy ─────────────────────────────
+# 1. Set MONGODB_URI on the hila-tours-db-auth group (Atlas connection string).
+# 2. Set FRONTEND_URL on the hila-tours-frontend-url group to common-service's
+#    public Render URL, once it's known (chicken-and-egg on the very first deploy —
+#    deploy once, copy the URL, then set this and redeploy).
+# 3. Confirm MongoDB Atlas Network Access allows connections from Render
+#    (see the project punch list — "Atlas network access" is still open).
+# 4. The frontend build (`npm run build` in frontend/, per agents/frontend/CLAUDE.md
+#    Step 8) must run and land in backend/common-service/public BEFORE this
+#    blueprint's build/deploy — that step is not yet wired into this file
+#    (frontend has no service block here; its output only needs to exist on
+#    disk when common-service's buildCommand runs).

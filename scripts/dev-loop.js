@@ -2,17 +2,21 @@
 /**
  * Dev Loop Orchestrator — Hila Tours
  *
- * This repo is a monorepo: `frontend/` + `backend/` with two microservices
- * (`user-management-service`, `tour-service`). Both backend services are built and run
- * from here, via `agents/backend/CLAUDE.md` (one shared prompt, parameterized per service).
+ * This repo is a monorepo: `frontend/` + `backend/` with three microservices
+ * (`user-management-service`, `tour-service`, `common-service`). All three backend
+ * services are built and run from here, via `agents/backend/CLAUDE.md` (one shared
+ * prompt, parameterized per service). `common-service` is a stateless production
+ * gateway (static hosting + reverse proxy) and only runs on tasks whose scope
+ * includes it — typically deploy/production-setup tasks, not regular features.
  *
  * Loop per backlog item:
  *   1) Pick next task from .plan/000-backlog.md
  *   2) Read design files (raw_from_ai_studio/ or Figma if provided)
  *   3) Generate plan in .plan/NNN-YYYY-MM-DD-topic.md and request approval
  *   4) Launch the Frontend agent (builds UI, defines API contract(s))
- *   5) Launch both Backend agents (user-management-service, tour-service) in parallel
- *      — they are independent microservices, per .rule/architecture.md
+ *   5) Launch Backend agents in parallel — user-management-service, tour-service,
+ *      and (only when in scope) common-service — independent services, per
+ *      .rule/architecture.md
  *   6) Launch QA validation
  *   7) Report done and wait for approval
  *   8) Launch Security audit
@@ -47,6 +51,7 @@ const MODEL_FOR = {
   frontend:                  "claude-opus-5",   // Frontend Agent — multi-file code generation
   "user-management-service": "claude-opus-5",   // Backend Agent — user-management-service — multi-file code generation
   "tour-service":            "claude-opus-5",   // Backend Agent — tour-service — multi-file code generation
+  "common-service":          "claude-sonnet-5", // Backend Agent — common-service — single-file stateless proxy/static gateway, no business logic
   qa:                        "claude-sonnet-5", // QA Agent — runs/reads existing tests, not creative code
   security:                  "claude-sonnet-5", // Security Agent — checklist/scan-driven audit; bump to claude-opus-5 if audits need deeper adversarial reasoning
   "orchestrator-chat":       "claude-sonnet-5", // waitForApprovalWithChat — short free-form chat during approval wait
@@ -101,7 +106,7 @@ const TICKETS_FILE = "docs/tickets.json"
 const STATE_DIR = "docs/task-state"
 
 let USD_TO_NIS = 3.7
-const ALL_AGENT_KEYS = ["orchestrator", "frontend", "user-management-service", "tour-service", "qa", "security"]
+const ALL_AGENT_KEYS = ["orchestrator", "frontend", "user-management-service", "tour-service", "common-service", "qa", "security"]
 
 // ─── Task resume state ──────────────────────────────────────────────────────
 // Persisted per backlog task-slug so a crash/restart at any point (plan review,
@@ -142,6 +147,7 @@ const AGENT_IDENTITY = {
   "frontend":                { icon: "🎨", color: "\x1b[35m", label: "frontend" },
   "user-management-service": { icon: "🔧", color: "\x1b[34m", label: " 👥 user-management-service" },
   "tour-service":            { icon: "🔧", color: "\x1b[34m", label: " 🚌 tour-service" },
+  "common-service":          { icon: "🔧", color: "\x1b[34m", label: " 🌐 common-service" },
   "qa":                      { icon: "🐛", color: "\x1b[32m", label: "qa" },
   "security":                { icon: "🛡️", color: "\x1b[36m", label: "security" },
 }
@@ -419,6 +425,7 @@ async function main() {
         frontend: tickets.frontend.id,
         userManagementService: tickets.userManagementService.id,
         tourService: tickets.tourService.id,
+        commonService: tickets.commonService.id,
         qa: tickets.qa.id,
         security: tickets.security.id,
       })
@@ -459,10 +466,13 @@ async function main() {
       if (linearStates.inProgress) {
         await updateLinearIssue(linearClient, tickets.userManagementService.issueId, { stateId: linearStates.inProgress })
         await updateLinearIssue(linearClient, tickets.tourService.issueId, { stateId: linearStates.inProgress })
+        if (inScope(task, "common-service")) {
+          await updateLinearIssue(linearClient, tickets.commonService.issueId, { stateId: linearStates.inProgress })
+        }
       }
     }
 
-    // ── Step: Backend (both microservices, in parallel — only those in scope) ──
+    // ── Step: Backend (all microservices, in parallel — only those in scope) ──
     log("Launching backend agents (only those in scope, in parallel)...")
 
     await Promise.all([
@@ -508,11 +518,35 @@ async function main() {
           })
         : (logSkip("Backend Agent — tour-service", "out of scope for this task"),
            writeSkippedReport(reports.tourService, "Backend Agent — tour-service")),
+      inScope(task, "common-service")
+        ? runAgent({
+            systemPrompt: "agents/backend/CLAUDE.md",
+            input: [
+              `You are the Backend Agent.`,
+              `Task: ${task.title}`,
+              `Linear ticket: ${tickets.commonService.url}`,
+              `Service: common-service`,
+              `Port: ${BACKEND_PORTS.commonService}`,
+              `No API contract for this service — it is a stateless production gateway (static hosting + reverse proxy), not a business-logic service.`,
+              `Approved plan: ${planPath}`,
+              `Follow your CLAUDE.md instructions exactly.`,
+              `End your final response with exact line: STATUS: DONE`,
+            ].join("\n"),
+            outputFile: reports.commonService,
+            doneMarker: "STATUS: DONE",
+            label: "Backend Agent — common-service",
+            agentKey: "common-service",
+          })
+        : (logSkip("Backend Agent — common-service", "out of scope for this task"),
+           writeSkippedReport(reports.commonService, "Backend Agent — common-service")),
     ])
 
     if (linearClient && linearStates?.done) {
       await updateLinearIssue(linearClient, tickets.userManagementService.issueId, { stateId: linearStates.done })
       await updateLinearIssue(linearClient, tickets.tourService.issueId, { stateId: linearStates.done })
+      if (inScope(task, "common-service")) {
+        await updateLinearIssue(linearClient, tickets.commonService.issueId, { stateId: linearStates.done })
+      }
       if (linearStates.inProgress) {
         await updateLinearIssue(linearClient, tickets.qa.issueId, { stateId: linearStates.inProgress })
       }
@@ -530,7 +564,8 @@ async function main() {
           `API contracts:`,
           `- ${API_CONTRACTS.userManagementService}`,
           `- ${API_CONTRACTS.tourService}`,
-          `Run validation across frontend, both backend services, and e2e.`,
+          `common-service has no API contract — it's a stateless gateway; verify its proxy/static behavior directly if it's in scope for this task.`,
+          `Run validation across frontend, all in-scope backend services, and e2e.`,
           `Write ${reports.qa} and end final response with exact line: STATUS: DONE`,
         ].join("\n"),
         outputFile: reports.qa,
@@ -575,7 +610,8 @@ async function main() {
           `API contracts:`,
           `- ${API_CONTRACTS.userManagementService}`,
           `- ${API_CONTRACTS.tourService}`,
-          `Audit frontend, both backend services, and API contracts for security issues.`,
+          `common-service has no API contract — if it's in scope for this task, audit it as a gateway (open-proxy/SSRF risk, unmodified Authorization header passthrough) per agents/security/CLAUDE.md.`,
+          `Audit frontend, all in-scope backend services, and API contracts for security issues.`,
           `Write security tests to tests/security/ and the report to ${reports.security}, then end final response with exact line: STATUS: DONE`,
         ].join("\n"),
         outputFile: reports.security,
@@ -725,6 +761,7 @@ function makeReportPaths(slug, ticketIds) {
     fe:             `${REPORTS_DIR}/${date}-${ticketIds.frontend}-${slug}-frontend.md`,
     userManagement: `${REPORTS_DIR}/${date}-${ticketIds.userManagementService}-${slug}-user-management-service.md`,
     tourService:    `${REPORTS_DIR}/${date}-${ticketIds.tourService}-${slug}-tour-service.md`,
+    commonService:  `${REPORTS_DIR}/${date}-${ticketIds.commonService}-${slug}-common-service.md`,
     qa:             `${REPORTS_DIR}/${date}-${ticketIds.qa}-${slug}-qa.md`,
     security:       `${REPORTS_DIR}/${date}-${ticketIds.security}-${slug}-security.md`,
   }
@@ -738,6 +775,7 @@ const API_CONTRACTS = {
 const BACKEND_PORTS = {
   userManagementService: 3032,
   tourService: 3033,
+  commonService: 3034,
 }
 
 // ─── Claude planning ──────────────────────────────────────────────────────────
@@ -903,7 +941,7 @@ async function askClaudeToCreateTickets({ teamId, task, planPath, userInstructio
   ]
   if (CLAUDE_ALLOWED_TOOLS) args.push("--allowedTools", CLAUDE_ALLOWED_TOOLS)
 
-  const input = `Using your Linear tool, create five issues in team ${teamId} for this task:
+  const input = `Using your Linear tool, create six issues in team ${teamId} for this task:
 - ${task.title}
 
 Plan file: ${planPath}
@@ -914,15 +952,16 @@ Create exactly:
 1) Frontend implementation ticket
 2) Backend ticket — user-management-service (port ${BACKEND_PORTS.userManagementService})
 3) Backend ticket — tour-service (port ${BACKEND_PORTS.tourService})
-4) QA / E2E validation ticket
-5) Security audit ticket
+4) Backend ticket — common-service (port ${BACKEND_PORTS.commonService}) — stateless production gateway, no API contract, no database
+5) QA / E2E validation ticket
+6) Security audit ticket
 
 Use Todo state and medium priority.
 ${LINEAR_PROJECT ? `Assign all issues to project: ${LINEAR_PROJECT}` : ""}
 ${userInstructions ? `\nUser instructions for this run:\n${userInstructions}\n` : ""}
 Output exactly this block and nothing else around it:
 TICKETS_JSON
-{"frontend":{"id":"<identifier>","issueId":"<uuid>","url":"<url>"},"userManagementService":{"id":"<identifier>","issueId":"<uuid>","url":"<url>"},"tourService":{"id":"<identifier>","issueId":"<uuid>","url":"<url>"},"qa":{"id":"<identifier>","issueId":"<uuid>","url":"<url>"},"security":{"id":"<identifier>","issueId":"<uuid>","url":"<url>"}}
+{"frontend":{"id":"<identifier>","issueId":"<uuid>","url":"<url>"},"userManagementService":{"id":"<identifier>","issueId":"<uuid>","url":"<url>"},"tourService":{"id":"<identifier>","issueId":"<uuid>","url":"<url>"},"commonService":{"id":"<identifier>","issueId":"<uuid>","url":"<url>"},"qa":{"id":"<identifier>","issueId":"<uuid>","url":"<url>"},"security":{"id":"<identifier>","issueId":"<uuid>","url":"<url>"}}
 END_TICKETS_JSON`
 
   const stdout = await spawnClaude(args, input, { agentKey: "orchestrator", extraEnv: { CLAUDE_AGENT_ROLE: "orchestrator" } })
@@ -935,7 +974,7 @@ function parseTicketsFromOutput(stdout) {
   if (!match) return null
   try {
     const parsed = JSON.parse(match[1])
-    if (!parsed.frontend || !parsed.userManagementService || !parsed.tourService || !parsed.qa || !parsed.security) return null
+    if (!parsed.frontend || !parsed.userManagementService || !parsed.tourService || !parsed.commonService || !parsed.qa || !parsed.security) return null
     return parsed
   } catch {
     return null
@@ -1016,6 +1055,7 @@ async function createLinearTickets({ client, teamId, states, task, planPath }) {
   const fe  = await createIssue(`[FE] ${task.title}`, `Implement frontend scope for:\n${task.title}\n\n${planBlock}`, "frontend-user")
   const um  = await createIssue(`[BE] user-management-service — ${task.title}`, `Implement user-management-service (port ${BACKEND_PORTS.userManagementService}) for:\n${task.title}\n\nAPI contract: ${API_CONTRACTS.userManagementService}\n\n${planBlock}`, "backend-user")
   const ts  = await createIssue(`[BE] tour-service — ${task.title}`, `Implement tour-service (port ${BACKEND_PORTS.tourService}) for:\n${task.title}\n\nAPI contract: ${API_CONTRACTS.tourService}\n\n${planBlock}`, "backend-user")
+  const cs  = await createIssue(`[BE] common-service — ${task.title}`, `Implement common-service (port ${BACKEND_PORTS.commonService}) for:\n${task.title}\n\nStateless production gateway — no API contract, no database. See agents/backend/CLAUDE.md's common-service section.\n\n${planBlock}`, "backend-user")
   const qa  = await createIssue(`[QA] ${task.title}`, `Validate feature and run E2E for:\n${task.title}\n\n${planBlock}`, "qa-user")
   const sec = await createIssue(`[SEC] ${task.title}`, `Run security audit across frontend, both backend services, and API contracts for:\n${task.title}\n\n${planBlock}`, "security-user")
 
@@ -1023,6 +1063,7 @@ async function createLinearTickets({ client, teamId, states, task, planPath }) {
     frontend:               { id: fe.identifier, issueId: fe.id, url: fe.url },
     userManagementService:  { id: um.identifier, issueId: um.id, url: um.url },
     tourService:            { id: ts.identifier, issueId: ts.id, url: ts.url },
+    commonService:          { id: cs.identifier, issueId: cs.id, url: cs.url },
     qa:                     { id: qa.identifier, issueId: qa.id, url: qa.url },
     security:               { id: sec.identifier, issueId: sec.id, url: sec.url },
   }
@@ -1075,6 +1116,7 @@ function simulateTickets(slug) {
     frontend:              { id: `${up}-FE`,  issueId: "sim-fe",  url: `https://linear.app/demo/issue/${up}-FE` },
     userManagementService: { id: `${up}-UM`,  issueId: "sim-um",  url: `https://linear.app/demo/issue/${up}-UM` },
     tourService:           { id: `${up}-TS`,  issueId: "sim-ts",  url: `https://linear.app/demo/issue/${up}-TS` },
+    commonService:         { id: `${up}-CS`,  issueId: "sim-cs",  url: `https://linear.app/demo/issue/${up}-CS` },
     qa:                    { id: `${up}-QA`,  issueId: "sim-qa",  url: `https://linear.app/demo/issue/${up}-QA` },
     security:              { id: `${up}-SEC`, issueId: "sim-sec", url: `https://linear.app/demo/issue/${up}-SEC` },
   }
