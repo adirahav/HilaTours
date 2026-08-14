@@ -190,11 +190,20 @@ This service is a stateless gateway: it serves the built frontend as static file
    })
 
    const PORT = process.env.PORT || 3034
-   app.listen(PORT, () => {
+   const server = app.listen(PORT, () => {
      logger.info(`Gateway ready at port ${PORT}`)
    })
    ```
    Order matters: health check → proxy routes → static files → SPA fallback. The SPA fallback must be last so client-side routing works on refresh.
+
+   **If any upstream service runs a WebSocket/socket.io server** (check for `socket.io` in its `package.json` before assuming there is none — e.g. `tour-service` does, for live seat-map updates): add a proxy for it too, with `ws: true`, e.g. `pathFilter: ['/socket.io']`. A WebSocket upgrade is a different mechanism from a normal HTTP request — `ws: true` alone does not intercept it. You must explicitly wire it to the raw `http.Server` returned by `app.listen(...)`:
+   ```ts
+   const socketProxy = createProxyMiddleware({ pathFilter: ['/socket.io'], target: process.env.TOUR_SERVICE_URL, ws: true })
+   app.use(socketProxy)
+   // after app.listen(...) returns `server`:
+   server.on('upgrade', socketProxy.upgrade)
+   ```
+   Without that last line, every socket.io handshake silently falls through to the SPA fallback (a normal `200` HTML response) instead of upgrading, and the client sees "Unexpected response code: 200" instead of `101 Switching Protocols`. Check the upstream's socket.io setup for a custom `path:` option (default is `/socket.io/`) and whether it's mounted under the service's gateway-prefix or directly on the raw server, to know whether `pathRewrite` is needed here too — for `tour-service` it's mounted directly on the raw server (not under `/tour-service/api`), so no `pathRewrite`.
 
    **`pathRewrite` is required, not optional.** Both business services mount their real routes under `/<service-name>/api/...` (e.g. `tour-service` only responds on `/tour-service/api/tour`, not `/api/tour` — verify this against each service's actual `app.ts`/`server.ts` before wiring the proxy, don't assume). Forwarding `/api/tour` to `TOUR_SERVICE_URL` unmodified 404s. The `pathRewrite` above reconstructs the real path by prefixing the service name.
 

@@ -52,6 +52,24 @@ app.use(
   })
 )
 
+// tour-service also runs a socket.io server (seat-map live updates) mounted
+// directly on its raw http.Server at the socket.io default path — NOT under
+// its `/tour-service/api` Express prefix, so no pathRewrite here. A
+// WebSocket upgrade is a different mechanism from a normal HTTP request:
+// createProxyMiddleware's `ws: true` only prepares the proxy to handle an
+// upgrade — it does NOT, by itself, intercept the Node 'upgrade' event.
+// Without explicitly wiring server.on('upgrade', ...) below, every socket.io
+// handshake falls through to the SPA fallback instead (which answers with a
+// normal 200 HTML page), and the client sees "Unexpected response code: 200"
+// instead of a 101 Switching Protocols.
+const socketProxy = createProxyMiddleware({
+  pathFilter: ['/socket.io'],
+  target: process.env.TOUR_SERVICE_URL || 'http://localhost:3033',
+  changeOrigin: true,
+  ws: true,
+})
+app.use(socketProxy)
+
 // Serve the built frontend (Vite builds directly into this folder).
 app.use(express.static(path.join(__dirname, '../public')))
 
@@ -65,9 +83,13 @@ const PORT = Number(process.env.PORT || 3034)
 
 // Only auto-start when run directly (not when imported by tests).
 if (process.env.NODE_ENV !== 'test') {
-  app.listen(PORT, () => {
+  const server = app.listen(PORT, () => {
     console.log(`[common-service] gateway ready at http://localhost:${PORT}`)
   })
+  // Required for the socket.io proxy above: forward raw WebSocket upgrade
+  // requests to it. `ws: true` in createProxyMiddleware alone does nothing
+  // without this — see the comment on socketProxy.
+  server.on('upgrade', socketProxy.upgrade)
 }
 
 export default app
