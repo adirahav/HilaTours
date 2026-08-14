@@ -31,7 +31,7 @@ services:
     plan: starter
     region: oregon
     rootDir: backend/common-service
-    buildCommand: npm install && npx tsc
+    buildCommand: cd ../../frontend && npm install && npm run build && cd ../backend/common-service && npm install && npx tsc
     startCommand: npm start
     healthCheckPath: /health
     envVarGroups:
@@ -91,8 +91,8 @@ services:
 #    deploy once, copy the URL, then set this and redeploy).
 # 3. Confirm MongoDB Atlas Network Access allows connections from Render
 #    (see the project punch list — "Atlas network access" is still open).
-# 4. The frontend build (`npm run build` in frontend/, per agents/frontend/CLAUDE.md
-#    Step 8) must run and land in backend/common-service/public BEFORE this
-#    blueprint's build/deploy — that step is not yet wired into this file
-#    (frontend has no service block here; its output only needs to exist on
-#    disk when common-service's buildCommand runs).
+# 4. common-service's buildCommand now builds the frontend first (npm run
+#    build in frontend/, per agents/frontend/CLAUDE.md Step 8's vite.config.ts
+#    outDir) before compiling common-service itself, so backend/common-service
+#    /public exists at deploy time even though it's gitignored and not
+#    committed. No separate frontend service/step needed.
