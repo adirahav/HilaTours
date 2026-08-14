@@ -48,7 +48,8 @@ Also read `.rule/database-rules.md` for the collection schema of your service, a
 cd backend/<your-service>
 npm init -y
 npm install express mongoose bcrypt jsonwebtoken cors dotenv
-npm install -D typescript tsx @types/express @types/node @types/bcrypt @types/jsonwebtoken vitest supertest @types/supertest
+npm install tsx
+npm install -D typescript @types/express @types/node @types/bcrypt @types/jsonwebtoken vitest supertest @types/supertest
 ```
 
 If `common-service`: it has no database and issues no tokens of its own, so skip `mongoose`, `bcrypt`, and `jsonwebtoken` (and their `@types`). Install instead:
@@ -56,10 +57,11 @@ If `common-service`: it has no database and issues no tokens of its own, so skip
 cd backend/common-service
 npm init -y
 npm install express cors dotenv http-proxy-middleware
-npm install -D typescript tsx @types/express @types/node vitest supertest @types/supertest
+npm install tsx
+npm install -D typescript @types/express @types/node vitest supertest @types/supertest
 ```
 
-Use `tsx` for the dev script, never `ts-node`/`nodemon` — `ts-node` has a known incompatibility with the TypeScript version already pinned across this repo (crashes on startup with `Cannot read properties of undefined (reading 'fileExists')`). Every service's `package.json` `"dev"` script must be exactly `tsx watch api/server.ts`, matching every other service — don't improvise an alternative dev-loop tool. Set `"type": "module"` in `package.json` — every service in this repo is ESM.
+Use `tsx` for both the dev and production start scripts, never `ts-node`/`nodemon` — `ts-node` has a known incompatibility with the TypeScript version already pinned across this repo (crashes on startup with `Cannot read properties of undefined (reading 'fileExists')`). Every service's `package.json` must have `"dev": "tsx watch api/server.ts"` and `"start": "tsx api/server.ts"` — don't improvise an alternative, and don't use `"start": "node dist/server.js"`. This repo's `tsconfig.json` uses `moduleResolution: "bundler"` (extensionless relative imports like `from "./app"`, matching every existing service), which only `tsx`/bundler-aware tools resolve — plain `node` running compiled output cannot resolve them and crashes with `ERR_MODULE_NOT_FOUND` in production, even though `npm run dev` works fine locally. `tsc` in the build step is still worth running (`npm run build`) purely as a type-check gate before deploy, but its `dist/` output is never actually executed. Because `tsx` runs in production, install it as a regular `dependency`, not a `devDependency` — hosting platforms may prune dev-only packages before running the start command. Set `"type": "module"` in `package.json` — every service in this repo is ESM.
 
 Create `tsconfig.json`:
 ```json
@@ -196,10 +198,10 @@ This service is a stateless gateway: it serves the built frontend as static file
 
    **`pathRewrite` is required, not optional.** Both business services mount their real routes under `/<service-name>/api/...` (e.g. `tour-service` only responds on `/tour-service/api/tour`, not `/api/tour` — verify this against each service's actual `app.ts`/`server.ts` before wiring the proxy, don't assume). Forwarding `/api/tour` to `TOUR_SERVICE_URL` unmodified 404s. The `pathRewrite` above reconstructs the real path by prefixing the service name.
 
-2. In `package.json`, add the production start script (pointing at compiled output, matching `tsconfig.json` `outDir`):
+2. In `package.json`, the production start script is `tsx`, same as every other service (see the `tsx` note in Step 2 above — plain `node dist/server.js` breaks in production for this repo's `moduleResolution: "bundler"` setup):
    ```json
    "scripts": {
-     "start": "node dist/server.js"
+     "start": "tsx api/server.ts"
    }
    ```
    `common-service` is the only backend service the hosting platform runs as a public-facing process in production — `user-management-service` and `tour-service` stay internal-only, reachable only from this gateway.
