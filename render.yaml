@@ -58,7 +58,6 @@ services:
     rootDir: backend/user-management-service
     buildCommand: npm install && npx tsc
     startCommand: npm start
-    healthCheckPath: /health
     envVars:
       - fromGroup: hila-tours-db-auth
       - fromGroup: hila-tours-frontend-url
@@ -74,7 +73,6 @@ services:
     rootDir: backend/tour-service
     buildCommand: npm install && npx tsc
     startCommand: npm start
-    healthCheckPath: /health
     envVars:
       - fromGroup: hila-tours-db-auth
       - fromGroup: hila-tours-frontend-url
