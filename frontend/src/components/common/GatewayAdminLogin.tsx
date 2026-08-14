@@ -1,5 +1,5 @@
 ﻿import { useId, useState } from 'react'
-import { ShieldCheck, Mail, Lock, CheckCircle, AlertCircle } from 'lucide-react'
+import { ShieldCheck, Mail, Lock, CheckCircle, AlertCircle, Eye, EyeOff } from 'lucide-react'
 import { toast } from 'sonner'
 import { authService } from '../../services/auth.service'
 import { cn } from '../../lib/utils'
@@ -36,6 +36,7 @@ export function GatewayAdminLogin({ onAdminLoginSuccess }: GatewayAdminLoginProp
   const [passwordTouched, setPasswordTouched] = useState(false)
   const [message, setMessage] = useState<Feedback | null>(null)
   const [isSubmitting, setIsSubmitting] = useState(false)
+  const [isPasswordVisible, setIsPasswordVisible] = useState(false)
 
   const emailId = useId()
   const emailErrorId = useId()
@@ -181,7 +182,7 @@ export function GatewayAdminLogin({ onAdminLoginSuccess }: GatewayAdminLoginProp
               />
               <input
                 id={passwordId}
-                type="password"
+                type={isPasswordVisible ? 'text' : 'password'}
                 value={loginPassword}
                 aria-invalid={passwordInvalid}
                 aria-describedby={passwordInvalid ? passwordErrorId : undefined}
@@ -191,13 +192,26 @@ export function GatewayAdminLogin({ onAdminLoginSuccess }: GatewayAdminLoginProp
                   if (!passwordTouched) setPasswordTouched(true)
                 }}
                 className={cn(
-                  'w-full bg-slate-50 border rounded-xl pr-10 pl-3 py-2 text-xs sm:text-sm focus:ring-2 focus:outline-none',
+                  'w-full bg-slate-50 border rounded-xl pr-10 pl-10 py-2 text-xs sm:text-sm focus:ring-2 focus:outline-none',
                   passwordInvalid
                     ? 'border-rose-500 focus:ring-rose-400 bg-rose-50/30'
                     : 'border-slate-300 focus:ring-amber-500'
                 )}
                 placeholder="••••••••"
               />
+              <button
+                type="button"
+                onClick={() => setIsPasswordVisible(v => !v)}
+                aria-label={isPasswordVisible ? 'הסתר סיסמה' : 'הצג סיסמה'}
+                tabIndex={-1}
+                className="absolute left-3 top-3 text-slate-400 hover:text-slate-600 focus:outline-none"
+              >
+                {isPasswordVisible ? (
+                  <EyeOff className="w-4 h-4" aria-hidden="true" />
+                ) : (
+                  <Eye className="w-4 h-4" aria-hidden="true" />
+                )}
+              </button>
             </div>
             {passwordInvalid && (
               <p
