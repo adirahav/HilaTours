@@ -2,9 +2,14 @@ import express from 'express'
 import cors from 'cors'
 import dotenv from 'dotenv'
 import path from 'path'
+import { fileURLToPath } from 'url'
 import { createProxyMiddleware } from 'http-proxy-middleware'
 
 dotenv.config({ path: '.env.development' })
+
+// __dirname doesn't exist under ESM ("type": "module") — reconstruct it from
+// import.meta.url instead, matching this repo's ESM convention.
+const __dirname = path.dirname(fileURLToPath(import.meta.url))
 
 export const app = express()
 
@@ -21,9 +26,17 @@ app.get('/health', (_req, res) => {
 // prefix (`/<service-name>/api/...`), not bare `/api/...` — verified against
 // each service's own server/app entrypoint. pathRewrite reconstructs that
 // real path so the proxied request actually resolves upstream.
+//
+// http-proxy-middleware v3+ must be mounted at root with `pathFilter` inside
+// the options, NOT as `app.use(['/api/tour', ...], createProxyMiddleware(...))`.
+// Express strips the matched prefix from req.url before an app.use(path, mw)
+// middleware ever sees it, so pathRewrite would receive an already-truncated
+// path (e.g. `/api/tour/123` arrives as `/123`) and silently produce the
+// wrong upstream URL — every proxied request 404s even though the target
+// service and pathRewrite logic are both correct in isolation.
 app.use(
-  ['/api/tour', '/api/bus', '/api/seat', '/api/manifest'],
   createProxyMiddleware({
+    pathFilter: ['/api/tour', '/api/bus', '/api/seat', '/api/manifest'],
     target: process.env.TOUR_SERVICE_URL || 'http://localhost:3033',
     changeOrigin: true,
     pathRewrite: (path) => `/tour-service${path}`,
@@ -31,8 +44,8 @@ app.use(
 )
 
 app.use(
-  ['/api/auth', '/api/forgot-password', '/api/role', '/api/permission'],
   createProxyMiddleware({
+    pathFilter: ['/api/auth', '/api/forgot-password', '/api/role', '/api/permission'],
     target: process.env.USER_MANAGEMENT_SERVICE_URL || 'http://localhost:3032',
     changeOrigin: true,
     pathRewrite: (path) => `/user-management-service${path}`,

@@ -5,11 +5,12 @@
   "type": "module",
   "workspaces": [
     "user-management-service",
-    "tour-service"
+    "tour-service",
+    "common-service"
   ],
   "scripts": {
-    "dev": "concurrently -n tour,user -c blue,green,yellow,magenta,cyan \"npm:dev --prefix common-service\" \"npm:dev --prefix analytics-service\" \"npm:dev --prefix tour-service\" \"npm:dev --prefix user-management-service\"",
-    "start": "concurrently -n gateway,tour,user -c white,blue,green,yellow,magenta,cyan \"node --env-file=.env.production server.js\" \"npm:start --prefix tour-service\" \"npm:start --prefix user-management-service\""
+    "dev": "concurrently -n common,tour,user -c magenta,blue,green \"npm:dev --prefix common-service\" \"npm:dev --prefix tour-service\" \"npm:dev --prefix user-management-service\"",
+    "start": "concurrently -n common,tour,user -c magenta,blue,green \"npm:start --prefix common-service\" \"npm:start --prefix tour-service\" \"npm:start --prefix user-management-service\""
   },
   "dependencies": {
     "concurrently": "^9.2.4",

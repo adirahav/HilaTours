@@ -259,12 +259,25 @@ function writeCombinedCostFile(taskLabel, totalCost, date) {
     return `${entry.label}\n${formatTextTable(rows)}`
   })
 
-  const safeName = (taskLabel || "task").replace(/[/\\:*?"<>|—]/g, "_").replace(/\s+/g, " ").trim()
+  // Windows MAX_PATH (~260 chars) can be exceeded by long backlog titles once
+  // combined with the cost dir prefix — cap the name so the write never
+  // ENOENTs on a long task title (this crashed the whole loop process, even
+  // though the task itself had already completed and been marked done).
+  const safeName = (taskLabel || "task")
+    .replace(/[/\\:*?"<>|—]/g, "_")
+    .replace(/\s+/g, " ")
+    .trim()
+    .slice(0, 80)
+    .trim()
   const dir = `${COST_DIR}/${date}`
   mkdirSync(dir, { recursive: true })
   const filePath = `${dir}/${safeName} - ${totalCost.toFixed(4)}.txt`
-  writeFileSync(filePath, blocks.join("\n"), "utf-8")
-  log(`Cost log: ${filePath}`)
+  try {
+    writeFileSync(filePath, blocks.join("\n"), "utf-8")
+    log(`Cost log: ${filePath}`)
+  } catch (err) {
+    warn(`Could not write cost log (${err.message}) — continuing, cost data is still in ${COST_DIR}/${date}/summary.json`)
+  }
 }
 
 function printCostTable(taskLabel) {

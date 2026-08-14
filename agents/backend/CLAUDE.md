@@ -28,7 +28,7 @@ You only work in the one directory matching the service name given in your launc
   - `docs/LAST_PLAN.md` (if present)
   - `.rule/database-rules.md`, `.rule/glossary.md`, `.rule/naming-rules.md`, `.rule/coding-rules.md`
 - Write: `docs/agent-reports/backend-agent-report-<ticket-id>-<YYYY-MM-DD>.md`
-- Forbidden: `frontend/**`, the other backend services' directories
+- Forbidden: `frontend/**`, the other backend services' directories, `backend/package.json` (the shared root manifest — do not add/edit workspaces or scripts there; if it needs a change for your service, flag it in your report instead of editing it)
 
 **Paths are always relative to the repository root — never to your current shell directory.** Step 2 below has you `cd backend/<your-service>` to run `npm` commands; that `cd` persists for the rest of your shell session. Every file path in this document (`docs/agent-reports/...`, `backend/<your-service>/...`, etc.) is still written relative to the repo root and must resolve there — do not let a prior `cd` change where a `docs/agent-reports/...` write actually lands. A stray `docs/` folder appearing anywhere under `backend/` (e.g. `backend/docs/`, `backend/<service>/docs/`) is exactly this mistake — it must never happen.
 
@@ -48,7 +48,7 @@ Also read `.rule/database-rules.md` for the collection schema of your service, a
 cd backend/<your-service>
 npm init -y
 npm install express mongoose bcrypt jsonwebtoken cors dotenv
-npm install -D typescript ts-node @types/express @types/node @types/bcrypt @types/jsonwebtoken nodemon vitest supertest @types/supertest
+npm install -D typescript tsx @types/express @types/node @types/bcrypt @types/jsonwebtoken vitest supertest @types/supertest
 ```
 
 If `common-service`: it has no database and issues no tokens of its own, so skip `mongoose`, `bcrypt`, and `jsonwebtoken` (and their `@types`). Install instead:
@@ -56,21 +56,25 @@ If `common-service`: it has no database and issues no tokens of its own, so skip
 cd backend/common-service
 npm init -y
 npm install express cors dotenv http-proxy-middleware
-npm install -D typescript ts-node @types/express @types/node nodemon vitest supertest @types/supertest
+npm install -D typescript tsx @types/express @types/node vitest supertest @types/supertest
 ```
+
+Use `tsx` for the dev script, never `ts-node`/`nodemon` — `ts-node` has a known incompatibility with the TypeScript version already pinned across this repo (crashes on startup with `Cannot read properties of undefined (reading 'fileExists')`). Every service's `package.json` `"dev"` script must be exactly `tsx watch api/server.ts`, matching every other service — don't improvise an alternative dev-loop tool. Set `"type": "module"` in `package.json` — every service in this repo is ESM.
 
 Create `tsconfig.json`:
 ```json
 {
   "compilerOptions": {
-    "target": "ES2020",
-    "module": "CommonJS",
-    "moduleResolution": "node",
+    "target": "ES2022",
+    "module": "ESNext",
+    "moduleResolution": "bundler",
     "esModuleInterop": true,
     "strict": true,
     "outDir": "dist",
     "rootDir": "api",
-    "skipLibCheck": true
+    "skipLibCheck": true,
+    "resolveJsonModule": true,
+    "forceConsistentCasingInFileNames": true
   },
   "include": ["api/**/*"],
   "exclude": ["node_modules", "dist"]
@@ -140,25 +144,37 @@ This service is a stateless gateway: it serves the built frontend as static file
    import cors from 'cors'
    import dotenv from 'dotenv'
    import path from 'path'
+   import { fileURLToPath } from 'url'
    import { createProxyMiddleware } from 'http-proxy-middleware'
    dotenv.config()
+
+   // __dirname doesn't exist under ESM ("type": "module", required per Step 2) —
+   // reconstruct it from import.meta.url instead.
+   const __dirname = path.dirname(fileURLToPath(import.meta.url))
 
    const app = express()
    app.use(cors({ origin: process.env.FRONTEND_URL }))
 
    app.get('/health', (_req, res) => res.status(200).json({ status: 'ok' }))
 
+   // Mounted at root with `pathFilter` inside the options — NOT as
+   // `app.use(['/api/tour', ...], createProxyMiddleware(...))`. Express
+   // strips the matched prefix from req.url before an app.use(path, mw)
+   // middleware ever sees it, so pathRewrite would receive an
+   // already-truncated path and silently produce the wrong upstream URL —
+   // every proxied request 404s even though the target and pathRewrite are
+   // each correct in isolation. Confirmed against http-proxy-middleware v4.
    app.use(
-     ['/api/tour', '/api/bus', '/api/seat', '/api/manifest'],
      createProxyMiddleware({
+       pathFilter: ['/api/tour', '/api/bus', '/api/seat', '/api/manifest'],
        target: process.env.TOUR_SERVICE_URL,
        changeOrigin: true,
        pathRewrite: (path) => `/tour-service${path}`,
      })
    )
    app.use(
-     ['/api/auth', '/api/forgot-password', '/api/role', '/api/permission'],
      createProxyMiddleware({
+       pathFilter: ['/api/auth', '/api/forgot-password', '/api/role', '/api/permission'],
        target: process.env.USER_MANAGEMENT_SERVICE_URL,
        changeOrigin: true,
        pathRewrite: (path) => `/user-management-service${path}`,
@@ -166,7 +182,8 @@ This service is a stateless gateway: it serves the built frontend as static file
    )
 
    app.use(express.static(path.join(__dirname, '../public')))
-   app.get('*', (_req, res) => {
+   // Express 5 requires a named wildcard, not bare '*' (path-to-regexp v6+).
+   app.get('/*splat', (_req, res) => {
      res.sendFile(path.join(__dirname, '../public/index.html'))
    })
 

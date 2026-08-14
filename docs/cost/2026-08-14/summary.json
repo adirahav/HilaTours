@@ -1,0 +1,23 @@
+{
+  "tasks": [
+    {
+      "role": "common-service",
+      "label": "Backend Agent — common-service",
+      "inputTokens": 74,
+      "outputTokens": 9491,
+      "cacheReadTokens": 1335169,
+      "costUsd": 0.6487417000000001,
+      "durationMs": 262831
+    },
+    {
+      "role": "qa",
+      "label": "QA Agent",
+      "inputTokens": 112,
+      "outputTokens": 19451,
+      "cacheReadTokens": 2430961,
+      "costUsd": 1.2187627999999997,
+      "durationMs": 678017
+    }
+  ],
+  "totalCostUsd": 1.8675045
+}
