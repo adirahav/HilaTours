@@ -34,9 +34,8 @@ services:
     buildCommand: cd ../../frontend && npm install && npm run build && cd ../backend/common-service && npm install && npx tsc
     startCommand: npm start
     healthCheckPath: /health
-    envVarGroups:
-      - hila-tours-frontend-url
     envVars:
+      - fromGroup: hila-tours-frontend-url
       - key: PORT
         value: 3034
       - key: TOUR_SERVICE_URL
@@ -60,10 +59,9 @@ services:
     buildCommand: npm install && npx tsc
     startCommand: npm start
     healthCheckPath: /health
-    envVarGroups:
-      - hila-tours-db-auth
-      - hila-tours-frontend-url
     envVars:
+      - fromGroup: hila-tours-db-auth
+      - fromGroup: hila-tours-frontend-url
       - key: PORT
         value: 3032
 
@@ -77,10 +75,9 @@ services:
     buildCommand: npm install && npx tsc
     startCommand: npm start
     healthCheckPath: /health
-    envVarGroups:
-      - hila-tours-db-auth
-      - hila-tours-frontend-url
     envVars:
+      - fromGroup: hila-tours-db-auth
+      - fromGroup: hila-tours-frontend-url
       - key: PORT
         value: 3033
 
