@@ -1,8 +1,15 @@
 # Render Blueprint for Hila Tours.
 # Three backend services + shared env var groups, matching the architecture
-# in agents/backend/CLAUDE.md: common-service is the only public web service
-# (static frontend host + reverse proxy); user-management-service and
-# tour-service are private services reachable only from common-service.
+# in agents/backend/CLAUDE.md: common-service is the gateway (static frontend
+# host + reverse proxy). user-management-service and tour-service are meant
+# to be private/internal-only in a real production setup, but Render's free
+# tier has no Private Service (pserv) option — that requires a paid plan per
+# service. To keep this learning project free, all three run as public Web
+# Services instead; they're still not *linked* from the frontend directly
+# (all traffic still goes through common-service's proxy), but each one IS
+# independently reachable if someone has/guesses its URL. That's a real,
+# accepted trade-off for $0 hosting, not an oversight — see "Manual one-time
+# setup" note 5 below for what upgrading back to pserv later would take.
 #
 # Docs: https://render.com/docs/blueprint-spec
 
@@ -28,7 +35,7 @@ services:
   - type: web
     name: common-service
     runtime: node
-    plan: starter
+    plan: free
     region: oregon
     rootDir: backend/common-service
     buildCommand: cd ../../frontend && npm install && npm run build && cd ../backend/common-service && npm install && npx tsc
@@ -40,39 +47,43 @@ services:
         value: 3034
       - key: TOUR_SERVICE_URL
         fromService:
-          type: pserv
+          type: web
           name: tour-service
           property: hostport
       - key: USER_MANAGEMENT_SERVICE_URL
         fromService:
-          type: pserv
+          type: web
           name: user-management-service
           property: hostport
 
-  # ── user-management-service: private, auth only ───────────────────────────
-  - type: pserv
+  # ── user-management-service: auth. Public Web Service on the free plan —
+  # see the top-of-file note on the pserv/free-tier trade-off.
+  - type: web
     name: user-management-service
     runtime: node
-    plan: starter
+    plan: free
     region: oregon
     rootDir: backend/user-management-service
     buildCommand: npm install && npx tsc
     startCommand: npm start
+    healthCheckPath: /health
     envVars:
       - fromGroup: hila-tours-db-auth
       - fromGroup: hila-tours-frontend-url
       - key: PORT
         value: 3032
 
-  # ── tour-service: private, tour/bus/seat domain ────────────────────────────
-  - type: pserv
+  # ── tour-service: tour/bus/seat domain. Public Web Service on the free
+  # plan — see the top-of-file note on the pserv/free-tier trade-off.
+  - type: web
     name: tour-service
     runtime: node
-    plan: starter
+    plan: free
     region: oregon
     rootDir: backend/tour-service
     buildCommand: npm install && npx tsc
     startCommand: npm start
+    healthCheckPath: /health
     envVars:
       - fromGroup: hila-tours-db-auth
       - fromGroup: hila-tours-frontend-url
@@ -91,3 +102,11 @@ services:
 #    outDir) before compiling common-service itself, so backend/common-service
 #    /public exists at deploy time even though it's gitignored and not
 #    committed. No separate frontend service/step needed.
+# 5. user-management-service and tour-service are public Web Services here
+#    (free plan), not Private Services — Render's free tier has no pserv
+#    option; pserv requires a paid plan per service. CORS still restricts
+#    browser-based requests to FRONTEND_URL, but each service's URL is
+#    directly reachable by anyone who has/guesses it (e.g. via curl), not
+#    gated behind common-service. Accepted for a learning project at $0; to
+#    close that gap later, switch both to `type: pserv` and upgrade their
+#    `plan` off `free`.
