@@ -24,6 +24,11 @@ seatRouter.post(
   asyncHandler(seat.manualAssign),
 )
 seatRouter.post(
+  `${base}/update-occupant`,
+  requirePermission("seat:updateOccupant"),
+  asyncHandler(seat.updateOccupant),
+)
+seatRouter.post(
   `${base}/swap-move`,
   requirePermission("seat:swapMove"),
   asyncHandler(seat.swapMove),

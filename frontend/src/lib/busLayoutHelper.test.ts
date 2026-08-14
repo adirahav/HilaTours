@@ -1,5 +1,6 @@
 import { describe, it, expect } from 'vitest'
 import {
+  BACK_DOOR_ROW,
   generateBusSeats,
   isNaturalPair,
   validateSeatPairing,
@@ -37,6 +38,24 @@ describe('generateBusSeats', () => {
     const seat3 = seats.find((s) => s.seatNumber === 3)!
     expect(seat3.seatStatus).toBe('taken')
     expect(seat3.passengerName).toBe('דנה')
+  })
+
+  // The back door always displaces the right-side pair (col 3-4) of
+  // BACK_DOOR_ROW — no seat ever exists there — and those 2 seats get their
+  // own compensation row instead, so the back bench itself stays 5 seats
+  // and totalSeats is unaffected.
+  it.each([55, 59])('leaves no seat at col 3/4 of the back-door row, for a %i-seat bus', (totalSeats) => {
+    const seats = generateBusSeats(totalSeats)
+    expect(seats).toHaveLength(totalSeats)
+    const doorRowSeats = seats.filter((s) => s.row === BACK_DOOR_ROW)
+    expect(doorRowSeats.map((s) => s.col).sort()).toEqual([1, 2])
+  })
+
+  it.each([55, 59])('keeps the back row at exactly 5 seats, for a %i-seat bus', (totalSeats) => {
+    const seats = generateBusSeats(totalSeats)
+    const maxRow = Math.max(...seats.map((s) => s.row))
+    const backRow = seats.filter((s) => s.row === maxRow)
+    expect(backRow).toHaveLength(5)
   })
 })
 

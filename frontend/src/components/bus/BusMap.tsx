@@ -1,8 +1,20 @@
-import { useRef, useState } from 'react'
+import { useEffect, useRef, useState } from 'react'
 import type { Seat } from '../../types/seat.types'
 import { toast } from 'sonner'
-import { Info, Check, Clock, User, Lock, Move, TriangleAlert } from 'lucide-react'
+import {
+  Info,
+  Check,
+  CheckCircle,
+  Clock,
+  User,
+  Lock,
+  LockOpen,
+  Move,
+  TriangleAlert,
+  X
+} from 'lucide-react'
 import { cn } from '../../lib/utils'
+import { BACK_DOOR_ROW, BACK_ROW_SEAT_COUNT } from '../../lib/busLayoutHelper'
 
 const LONG_PRESS_MS = 500
 
@@ -17,10 +29,13 @@ interface BusMapProps {
   // available seat (manual-assign onto it).
   onAdminClickSeat?: (seat: Seat) => void
   onMoveSeat?: (fromSeatNumber: number, toSeatNumber: number) => void
-  // Long-press (500ms) on an available/reserved seat toggles it directly —
-  // no passenger info to collect for that action, so skip the modal.
-  // Pending/taken seats are never affected by a long-press.
+  // Long-press (500ms) opens a small quick-action menu on the seat instead of
+  // the full modal — its options depend on the seat's current status (see
+  // SeatQuickMenu below). All four callbacks below skip the passenger-info
+  // form entirely, so they're only wired for actions that need no input.
   onQuickToggleReserve?: (seat: Seat) => void
+  onQuickApprove?: (seat: Seat) => void
+  onQuickCancel?: (seat: Seat) => void
 }
 
 const STATUS_LABEL: Record<Seat['seatStatus'], string> = {
@@ -38,18 +53,32 @@ export function BusMap({
   isAdminMode = false,
   onAdminClickSeat,
   onMoveSeat,
-  onQuickToggleReserve
+  onQuickToggleReserve,
+  onQuickApprove,
+  onQuickCancel
 }: BusMapProps) {
   const [hoveredSeat, setHoveredSeat] = useState<Seat | null>(null)
   const [draggedSeatNumber, setDraggedSeatNumber] = useState<number | null>(null)
   const [dragOverSeatNumber, setDragOverSeatNumber] = useState<number | null>(null)
   const [moveMode, setMoveMode] = useState(false)
   const [moveSourceSeatNumber, setMoveSourceSeatNumber] = useState<number | null>(null)
+  const [quickMenuSeatNumber, setQuickMenuSeatNumber] = useState<number | null>(null)
   const longPressTimer = useRef<ReturnType<typeof setTimeout> | null>(null)
   const longPressTriggered = useRef(false)
 
+  const closeQuickMenu = () => setQuickMenuSeatNumber(null)
+
+  useEffect(() => {
+    if (quickMenuSeatNumber === null) return
+    const onKeyDown = (e: KeyboardEvent) => {
+      if (e.key === 'Escape') closeQuickMenu()
+    }
+    document.addEventListener('keydown', onKeyDown)
+    return () => document.removeEventListener('keydown', onKeyDown)
+  }, [quickMenuSeatNumber])
+
   const safeSeats = seats || []
-  const standardLimit = totalSeats - 5
+  const standardLimit = totalSeats - BACK_ROW_SEAT_COUNT
   const standardSeats = safeSeats.filter((s) => s.seatNumber <= standardLimit)
   const backRowSeats = safeSeats.filter((s) => s.seatNumber > standardLimit)
 
@@ -113,15 +142,15 @@ export function BusMap({
     }
     switch (seat.seatStatus) {
       case 'available':
-        return 'מושב #' + seat.seatNumber + ' - פנוי לבחירה'
+        return 'פנוי '
       case 'pending':
-        return 'מושב #' + seat.seatNumber + ' - ממתין לאישור (' + (seat.passengerName || 'נוסע') + ')'
+        return seat.passengerName ? seat.passengerName + ' (' + ('ממתין לאישור') + ')' : 'ממתין לאישור'
       case 'taken':
-        return 'תפוס על ידי: ' + (seat.passengerName || 'נוסע') + ' (' + (seat.pickupPoint || 'מאושר') + ')'
+        return seat.passengerName ? seat.passengerName + ' (' + (seat.pickupPoint || 'ללא תחנה') + ')' : 'תפוס'
       case 'reserved':
-        return 'מושב שמור על ידי ההנהלה ' + (seat.notes ? '(' + seat.notes + ')' : '')
+        return 'שמור ' + (seat.notes ? '(' + seat.notes + ')' : '')
       default:
-        return 'מושב #' + seat.seatNumber
+        return ''
     }
   }
 
@@ -160,16 +189,9 @@ export function BusMap({
       return
     }
 
-    if (seat.seatStatus === 'reserved') {
-      toast.error('מושב זה שמור על ידי ההנהלה ואינו זמין לבחירה.')
-      return
-    }
-    if (seat.seatStatus === 'taken' || seat.seatStatus === 'pending') {
-      const occupant = seat.passengerName ? 'על ידי ' + seat.passengerName : ''
-      const state = seat.seatStatus === 'taken' ? 'תפוס' : 'ממתין לאישור'
-      toast.error('מושב #' + seat.seatNumber + ' ' + state + ' ' + occupant + '.')
-      return
-    }
+    // Unavailable seats (reserved/taken/pending) are not clickable at all —
+    // no error toast, no action.
+    if (seat.seatStatus !== 'available') return
     onToggleSelectSeat(seat.seatNumber)
   }
 
@@ -181,18 +203,15 @@ export function BusMap({
   }
 
   // Long-press only applies in admin mode, not while move-mode is active
-  // (there, a press is always a move source/target pick).
+  // (there, a press is always a move source/target pick). Opens the
+  // quick-action menu — its content depends on the seat's status.
   const handleSeatPressStart = (seat: Seat) => {
     if (!isAdminMode || moveMode) return
     clearLongPressTimer()
     longPressTriggered.current = false
     longPressTimer.current = setTimeout(() => {
       longPressTriggered.current = true
-      if (seat.seatStatus === 'available' || seat.seatStatus === 'reserved') {
-        onQuickToggleReserve?.(seat)
-      } else {
-        toast.error('שמירה/שחרור מהירים זמינים רק למושבים פנויים או שמורים.')
-      }
+      setQuickMenuSeatNumber(seat.seatNumber)
     }, LONG_PRESS_MS)
   }
 
@@ -232,30 +251,41 @@ export function BusMap({
   }
 
   const renderSeat = (seat: Seat) => (
-    <SeatButton
-      key={seat.id}
-      seat={seat}
-      styleClass={getSeatStyle(seat)}
-      icon={getSeatIcon(seat)}
-      tooltip={getSeatTooltipText(seat)}
-      ariaLabel={getSeatAriaLabel(seat)}
-      isSelected={selectedSeatNumbers.includes(seat.seatNumber)}
-      onClick={() => handleSeatClick(seat)}
-      onFocus={() => setHoveredSeat(seat)}
-      onBlur={() => setHoveredSeat(null)}
-      onMouseEnter={() => setHoveredSeat(seat)}
-      onMouseLeave={() => {
-        setHoveredSeat(null)
-        handleSeatPressEnd()
-      }}
-      onPressStart={() => handleSeatPressStart(seat)}
-      onPressEnd={handleSeatPressEnd}
-      isAdminMode={isAdminMode}
-      onDragStart={(e) => handleSeatDragStart(e, seat)}
-      onDragOver={(e) => handleSeatDragOver(e, seat)}
-      onDrop={(e) => handleSeatDrop(e, seat)}
-      onDragEnd={handleSeatDragEnd}
-    />
+    <div key={seat.id} className="relative">
+      <SeatButton
+        seat={seat}
+        styleClass={getSeatStyle(seat)}
+        icon={getSeatIcon(seat)}
+        tooltip={getSeatTooltipText(seat)}
+        ariaLabel={getSeatAriaLabel(seat)}
+        isSelected={selectedSeatNumbers.includes(seat.seatNumber)}
+        disabled={!isAdminMode && seat.seatStatus !== 'available'}
+        onClick={() => handleSeatClick(seat)}
+        onFocus={() => setHoveredSeat(seat)}
+        onBlur={() => setHoveredSeat(null)}
+        onMouseEnter={() => setHoveredSeat(seat)}
+        onMouseLeave={() => {
+          setHoveredSeat(null)
+          handleSeatPressEnd()
+        }}
+        onPressStart={() => handleSeatPressStart(seat)}
+        onPressEnd={handleSeatPressEnd}
+        isAdminMode={isAdminMode}
+        onDragStart={(e) => handleSeatDragStart(e, seat)}
+        onDragOver={(e) => handleSeatDragOver(e, seat)}
+        onDrop={(e) => handleSeatDrop(e, seat)}
+        onDragEnd={handleSeatDragEnd}
+      />
+      {isAdminMode && quickMenuSeatNumber === seat.seatNumber && (
+        <SeatQuickMenu
+          seat={seat}
+          onClose={closeQuickMenu}
+          onToggleReserve={onQuickToggleReserve}
+          onApprove={onQuickApprove}
+          onCancel={onQuickCancel}
+        />
+      )}
+    </div>
   )
 
   return (
@@ -264,27 +294,15 @@ export function BusMap({
         className="w-full bg-slate-900/5 rounded-3xl p-4 sm:p-6 border-2 border-slate-300 shadow-xl relative backdrop-blur-sm"
         dir="ltr"
       >
-        {isAdminMode && (
-          <div className="mb-4 flex items-center justify-end gap-2" dir="rtl">
-            <button
-              type="button"
-              onClick={() => {
-                setMoveMode((prev) => !prev)
-                setMoveSourceSeatNumber(null)
-              }}
-              aria-pressed={moveMode}
-              className={cn(
-                'inline-flex items-center gap-2 rounded-xl border-2 px-3 py-1.5 text-xs font-semibold transition-colors focus:outline-none focus-visible:ring-2 focus-visible:ring-blue-500',
-                moveMode
-                  ? 'bg-amber-500 text-white border-amber-600'
-                  : 'bg-white text-slate-700 border-slate-300 hover:bg-slate-100'
-              )}
-            >
-              <Move aria-hidden="true" className="w-4 h-4" />
-              {moveMode ? 'מצב העברה פעיל' : 'מצב העברה/החלפה'}
-            </button>
-          </div>
+        {quickMenuSeatNumber !== null && (
+          <div
+            className="fixed inset-0 z-40"
+            onClick={closeQuickMenu}
+            aria-hidden="true"
+          />
         )}
+
+        
 
         <div className="bg-slate-800 text-white rounded-2xl p-4 mb-6 shadow-inner relative overflow-hidden border border-slate-700">
           <div className="flex items-center justify-between">
@@ -334,60 +352,60 @@ export function BusMap({
             const col3 = rowSeats.find((s) => s.col === 3)
             const col4 = rowSeats.find((s) => s.col === 4)
 
+            const isBackDoorRow = rowNum === BACK_DOOR_ROW
+
             return (
-              <div key={'row-' + rowNum} className="grid grid-cols-5 gap-2 sm:gap-3 items-center">
+              <div
+                key={'row-' + rowNum}
+                className={cn(
+                  'grid grid-cols-5 gap-2 sm:gap-3 items-center',
+                  isBackDoorRow && 'py-1'
+                )}
+              >
                 <div>{col1 && renderSeat(col1)}</div>
                 <div>{col2 && renderSeat(col2)}</div>
                 <div className="flex items-center justify-center text-[11px] font-semibold text-slate-400 select-none">
                   {rowNum}
                 </div>
-                <div>{col3 && renderSeat(col3)}</div>
-                <div>{col4 && renderSeat(col4)}</div>
+                {isBackDoorRow ? (
+                  // The back door occupies the two right-side seat slots
+                  // (col 3-4) — no seats here, ever. Right-aligned within
+                  // that space so it sits flush with col 4's usual position.
+                  <div className="col-span-2 flex justify-end">
+                    <div
+                      className="bg-slate-700/80 px-3 py-1.5 rounded-xl border border-slate-600 text-xs text-slate-300 font-medium"
+                      title="דלת אחורית"
+                    >
+                      דלת אחורית
+                    </div>
+                  </div>
+                ) : (
+                  <>
+                    <div>{col3 && renderSeat(col3)}</div>
+                    <div>{col4 && renderSeat(col4)}</div>
+                  </>
+                )}
               </div>
             )
           })}
         </div>
 
         <div className="mt-6 pt-4 border-t-2 border-slate-300">
-          <div className="text-center text-xs font-semibold text-slate-500 mb-2" dir="rtl">
-            ספסל אחורי ({backRowSeats.length} מושבים)
-          </div>
           <div className="grid grid-cols-5 gap-2 sm:gap-3">
-            {backRowSeats.map((seat) => renderSeat(seat))}
+            {/* Always exactly 5 — the 2 seats the back door displaces from
+                BACK_DOOR_ROW get their own compensation row instead (see
+                busLayoutHelper.ts), so the bench itself never grows.
+                Positioned by `col` (not array/seatNumber order) so the back
+                row's right-to-left numbering renders in the same visual
+                direction as every standard row. */}
+            {[1, 2, 3, 4, 5].map((col) => {
+              const seat = backRowSeats.find((s) => s.col === col)
+              return <div key={'back-col-' + col}>{seat && renderSeat(seat)}</div>
+            })}
           </div>
         </div>
 
-        <div
-          className="mt-5 min-h-[44px] bg-slate-900 text-white rounded-xl p-3 flex items-center justify-between text-xs sm:text-sm shadow-lg border border-slate-700"
-          dir="rtl"
-          role="status"
-          aria-live="polite"
-        >
-          <div className="flex items-center gap-2">
-            <Info aria-hidden="true" className="w-4 h-4 text-blue-400 shrink-0" />
-            <span>
-              {draggedSeatNumber || moveSourceSeatNumber ? (
-                <span className="text-amber-300 font-bold">
-                  {'מעביר מושב #' + (draggedSeatNumber ?? moveSourceSeatNumber) + '... בחר מושב יעד'}
-                </span>
-              ) : hoveredSeat ? (
-                getSeatTooltipText(hoveredSeat)
-              ) : (
-                <span className="text-slate-400">
-                  {isAdminMode
-                    ? 'לחץ על מושב לניהול, החזק לחיצה על מושב פנוי/שמור לשמירה/שחרור מיידיים, או הפעל מצב העברה'
-                    : 'עבור עם המקלדת או לחץ על מושבים כדי לבחור אותם'}
-                </span>
-              )}
-            </span>
-          </div>
-
-          {hoveredSeat && (
-            <span className="text-xs bg-slate-800 px-2 py-0.5 rounded text-amber-300 font-mono font-bold">
-              #{hoveredSeat.seatNumber}
-            </span>
-          )}
-        </div>
+        
       </div>
     </div>
   )
@@ -400,6 +418,7 @@ interface SeatButtonProps {
   tooltip: string
   ariaLabel: string
   isSelected: boolean
+  disabled?: boolean
   onClick: () => void
   onFocus: () => void
   onBlur: () => void
@@ -421,6 +440,7 @@ function SeatButton({
   tooltip,
   ariaLabel,
   isSelected,
+  disabled,
   onClick,
   onFocus,
   onBlur,
@@ -441,6 +461,7 @@ function SeatButton({
   return (
     <button
       type="button"
+      disabled={disabled}
       onClick={onClick}
       onFocus={onFocus}
       onBlur={onBlur}
@@ -462,6 +483,7 @@ function SeatButton({
         showOccupant ? 'py-1.5' : 'aspect-[4/3]',
         'focus:outline-none focus-visible:ring-2 focus-visible:ring-blue-500 focus-visible:ring-offset-2',
         isAdminMode && 'cursor-grab active:cursor-grabbing',
+        disabled && 'cursor-default',
         styleClass
       )}
     >
@@ -486,11 +508,6 @@ function SeatButton({
           >
             {seat.passengerName}
           </span>
-          {missingPickup && (
-            <span className="inline-block text-[8px] sm:text-[9px] font-extrabold bg-rose-200 text-rose-900 border border-rose-300 rounded px-1 py-[0.5px] mt-0.5 leading-none whitespace-nowrap">
-              ללא תחנה
-            </span>
-          )}
         </div>
       )}
 
@@ -501,5 +518,108 @@ function SeatButton({
         </div>
       </div>
     </button>
+  )
+}
+
+interface SeatQuickMenuProps {
+  seat: Seat
+  onClose: () => void
+  onToggleReserve?: (seat: Seat) => void
+  onApprove?: (seat: Seat) => void
+  onCancel?: (seat: Seat) => void
+}
+
+// Long-press quick-action menu: its content depends entirely on the seat's
+// current status, since each status only ever has one or two no-input
+// actions available (never the full passenger-details form).
+function SeatQuickMenu({ seat, onClose, onToggleReserve, onApprove, onCancel }: SeatQuickMenuProps) {
+  const run = (action?: (seat: Seat) => void) => () => {
+    action?.(seat)
+    onClose()
+  }
+
+  return (
+    // A flex-centered full-cover overlay, not percentage `top/left` + a
+    // translate transform — the translate approach visibly snapped in at
+    // the wrong spot for a moment before settling centered. `pointer-events`
+    // is re-enabled only on the menu itself so the invisible overlay never
+    // blocks clicks elsewhere on the seat button.
+    <div className="absolute inset-0 z-50 flex items-center justify-center pointer-events-none">
+      <div
+        className="pointer-events-auto w-28 sm:w-32 bg-slate-900/95 backdrop-blur-md text-white rounded-xl p-1.5 shadow-xl border border-slate-700 ring-2 ring-amber-400/80 space-y-1 text-right animate-scale-in"
+        dir="rtl"
+        onClick={(e) => e.stopPropagation()}
+      >
+        <div className="flex items-center justify-between border-b border-slate-800 pb-1 px-0.5">
+          <span className="font-extrabold text-[10px] text-amber-300 truncate">מושב #{seat.seatNumber}</span>
+          <button
+            type="button"
+            onClick={onClose}
+            title="סגור"
+            className="p-0.5 rounded text-slate-400 hover:text-white hover:bg-slate-800 transition"
+          >
+            <X aria-hidden="true" className="w-3 h-3" />
+          </button>
+        </div>
+
+        <div className="space-y-1 pt-0.5">
+          {seat.seatStatus === 'reserved' && (
+            <button
+              type="button"
+              onClick={run(onToggleReserve)}
+              className="w-full py-1.5 px-1 bg-amber-500 hover:bg-amber-400 text-slate-950 font-extrabold text-[10.5px] rounded-lg flex items-center justify-center gap-1 shadow-xs transition active:scale-95"
+            >
+              <LockOpen aria-hidden="true" className="w-3 h-3 shrink-0 text-slate-950" />
+              <span>שחרור</span>
+            </button>
+          )}
+
+          {seat.seatStatus === 'taken' && (
+            <button
+              type="button"
+              onClick={run(onCancel)}
+              className="w-full py-1.5 px-1 bg-rose-600 hover:bg-rose-500 text-white font-bold text-[10.5px] rounded-lg flex items-center justify-center gap-1 shadow-xs transition active:scale-95"
+            >
+              <X aria-hidden="true" className="w-3 h-3 shrink-0" />
+              <span>ביטול</span>
+            </button>
+          )}
+
+          {seat.seatStatus === 'available' && (
+            <button
+              type="button"
+              onClick={run(onToggleReserve)}
+              className="w-full py-1.5 px-1 bg-purple-600 hover:bg-purple-500 text-white font-bold text-[11px] rounded-lg flex items-center justify-center gap-1 shadow-xs transition active:scale-95"
+            >
+              <Lock aria-hidden="true" className="w-3 h-3 shrink-0" />
+              <span>שמור</span>
+            </button>
+          )}
+
+          {seat.seatStatus === 'pending' && (
+            <div className="space-y-1">
+              <button
+                type="button"
+                title="אישור"
+                onClick={run(onApprove)}
+                className="w-full py-1.5 px-1 bg-emerald-600 hover:bg-emerald-500 text-white font-bold text-[10.5px] rounded-lg flex items-center justify-center gap-1 shadow-xs transition active:scale-95"
+              >
+                <CheckCircle aria-hidden="true" className="w-3 h-3 shrink-0" />
+                <span>אישור</span>
+              </button>
+              <button
+                type="button"
+                title="ביטול"
+                onClick={run(onCancel)}
+                className="w-full py-1.5 px-1 bg-rose-600 hover:bg-rose-500 text-white font-bold text-[10.5px] rounded-lg flex items-center justify-center gap-1 shadow-xs transition active:scale-95"
+              >
+                <X aria-hidden="true" className="w-3 h-3 shrink-0" />
+                <span>ביטול</span>
+              </button>
+            </div>
+          )}
+        </div>
+      </div>
+    </div>
   )
 }

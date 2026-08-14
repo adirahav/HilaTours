@@ -138,31 +138,37 @@ describe('SeatManagement', () => {
     fireEvent.pointerUp(button)
   }
 
-  it('long-press on an available seat toggles it reserved directly, no modal', async () => {
+  it('long-press on an available seat opens a quick menu; "שמור" reserves it directly, no modal', async () => {
     toggleReserveMock.mockResolvedValue(undefined)
+    const user = userEvent.setup()
     render(<SeatManagement />)
 
     await longPress(screen.getByRole('button', { name: /מושב 1,/ }))
+    await user.click(screen.getByRole('button', { name: 'שמור' }))
 
     expect(toggleReserveMock).toHaveBeenCalledWith('t1', 'bus1', 'bus1-seat1')
     expect(screen.queryByRole('dialog')).not.toBeInTheDocument()
   }, 10000)
 
-  it('long-press on a reserved seat releases it directly, no modal', async () => {
+  it('long-press on a reserved seat opens a quick menu; "שחרור" releases it directly, no modal', async () => {
     toggleReserveMock.mockResolvedValue(undefined)
+    const user = userEvent.setup()
     render(<SeatManagement />)
 
     await longPress(screen.getByRole('button', { name: /מושב 5,/ }))
+    await user.click(screen.getByRole('button', { name: 'שחרור' }))
 
     expect(toggleReserveMock).toHaveBeenCalledWith('t1', 'bus1', 'bus1-seat5')
     expect(screen.queryByRole('dialog')).not.toBeInTheDocument()
   }, 10000)
 
-  it('long-press on a pending seat does nothing (still needs the modal)', async () => {
+  it('long-press on a pending seat opens a quick menu with approve/cancel, not the modal', async () => {
     render(<SeatManagement />)
 
     await longPress(screen.getByRole('button', { name: /מושב 2,/ }))
 
+    expect(screen.getByRole('button', { name: 'אישור' })).toBeInTheDocument()
+    expect(screen.getByRole('button', { name: 'ביטול' })).toBeInTheDocument()
     expect(toggleReserveMock).not.toHaveBeenCalled()
     expect(screen.queryByRole('dialog')).not.toBeInTheDocument()
   }, 10000)

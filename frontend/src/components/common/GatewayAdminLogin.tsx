@@ -3,6 +3,7 @@ import { ShieldCheck, Mail, Lock, CheckCircle, AlertCircle } from 'lucide-react'
 import { toast } from 'sonner'
 import { authService } from '../../services/auth.service'
 import { cn } from '../../lib/utils'
+import { getStoredAdminEmail, setStoredAdminEmail } from '../../lib/adminEmailStorage'
 
 interface GatewayAdminLoginProps {
   // Routing lives in the Page layer: the host passes a callback to run on success.
@@ -13,10 +14,23 @@ type Feedback = { type: 'error' | 'success'; text: string }
 
 // Friendly Hebrew fallback shown when the server does not provide a usable message.
 const LOGIN_ERROR_FALLBACK = 'פרטי ההתחברות שגויים'
+const LOGIN_ERROR_UNAUTHORIZED = 'אימייל או סיסמה שגויים'
 const LOGIN_SUCCESS = 'התחברת בהצלחה'
 
+// Axios always sets a generic `err.message` (e.g. "Request failed with
+// status code 401") even when the server sent no usable body — that raw
+// message must never reach the user. Map by HTTP status / server-provided
+// message instead of trusting err.message.
+function loginErrorText(err: unknown): string {
+  const status = (err as { response?: { status?: number } } | null)?.response?.status
+  if (status === 401) return LOGIN_ERROR_UNAUTHORIZED
+  const serverMessage = (err as { response?: { data?: { message?: string } } } | null)?.response
+    ?.data?.message
+  return serverMessage || LOGIN_ERROR_FALLBACK
+}
+
 export function GatewayAdminLogin({ onAdminLoginSuccess }: GatewayAdminLoginProps) {
-  const [loginEmail, setLoginEmail] = useState('')
+  const [loginEmail, setLoginEmail] = useState(getStoredAdminEmail)
   const [loginPassword, setLoginPassword] = useState('')
   const [emailTouched, setEmailTouched] = useState(false)
   const [passwordTouched, setPasswordTouched] = useState(false)
@@ -48,17 +62,17 @@ export function GatewayAdminLogin({ onAdminLoginSuccess }: GatewayAdminLoginProp
     setMessage(null)
     setIsSubmitting(true)
     try {
+      const trimmedEmail = loginEmail.trim()
       await authService.login({
-        email: loginEmail.trim(),
+        email: trimmedEmail,
         password: loginPassword
       })
+      setStoredAdminEmail(trimmedEmail)
       setMessage({ type: 'success', text: LOGIN_SUCCESS })
-      toast.success(LOGIN_SUCCESS)
       onAdminLoginSuccess()
     } catch (err) {
       // Never surface raw API payloads/tokens — map to a hardcoded Hebrew message.
-      const text =
-        err instanceof Error && err.message ? err.message : LOGIN_ERROR_FALLBACK
+      const text = loginErrorText(err)
       console.log('[LOGIN] admin login failed')
       setMessage({ type: 'error', text })
       toast.error(text)

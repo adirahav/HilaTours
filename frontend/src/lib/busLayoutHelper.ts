@@ -1,9 +1,36 @@
 import type { Seat } from '../types/seat.types'
 
+// Every bus in the fleet has a fixed back door at this row, on the right
+// side (`col` 3 and 4 — the same two columns the front-of-row lowest numbers
+// normally occupy). Those two seat slots don't exist; the 2 seats they'd
+// have used are made up for at the back row instead, so the bus's total
+// seat count is unaffected. Shared with BusMap.tsx, which draws the door.
+export const BACK_DOOR_ROW = 8
+
+// The back bench is always exactly 5 seats. The 2 seats the back door
+// displaces from BACK_DOOR_ROW get their own small compensation row instead
+// of being piled onto the bench (see generateBusSeats below). Anything that
+// needs to tell "is this seat number in the back row" apart from a standard
+// row (BusMap's render split, isNaturalPair, autoSuggestPairs) must use
+// this, not a hardcoded `totalSeats - 5`.
+export const BACK_ROW_SEAT_COUNT = 5
+
+// How many seats the back door displaces from BACK_DOOR_ROW (columns 3-4)
+// — made up for by a dedicated compensation row, not by growing the bench.
+const DOOR_GAP_SEATS = 2
+
 /**
  * Generates structured seats for a bus layout based on total seats (50-60).
  * standard row layout: 2 seats (Left), Aisle, 2 seats (Right)
- * back row: 5 seats together
+ * back row: 5 seats together. The 2 seats the back door displaces from
+ * BACK_DOOR_ROW get their own compensation row (also right-aligned) placed
+ * just before the back row, so the bench itself stays a fixed 5 seats.
+ *
+ * Numbering direction: seat 1 is nearest the front door (physically the
+ * rightmost seat, `col` 4 — the driver is always on the left, boarding is
+ * always from the right), and numbers increase right-to-left across each
+ * row before moving to the next row. So within a row, `col` 4 gets the
+ * lowest number, not `col` 1.
  */
 export function generateBusSeats(totalSeats: number, existingSeats: Seat[] = []): Seat[] {
   const seats: Seat[] = []
@@ -37,9 +64,12 @@ export function generateBusSeats(totalSeats: number, existingSeats: Seat[] = [])
     }
   }
 
-  // Generate standard rows (4 seats per row: col 1, 2, 3, 4)
+  // Generate standard rows (4 seats per row: col 4, 3, 2, 1 — right to left).
+  // At BACK_DOOR_ROW, columns 3-4 (the right side) are the back door, not
+  // seats — skipped here, and made up for at the back row below.
   for (let r = 1; r <= numStandardRows; r++) {
-    for (let c = 1; c <= 4; c++) {
+    for (let c = 4; c >= 1; c--) {
+      if (r === BACK_DOOR_ROW && c >= 3) continue
       if (currentSeatNumber <= standardSeatsCount) {
         seats.push(buildSeat(r, c))
         currentSeatNumber++
@@ -47,22 +77,29 @@ export function generateBusSeats(totalSeats: number, existingSeats: Seat[] = [])
     }
   }
 
-  // If leftover standard seats before back row
-  if (leftoverStandard > 0) {
-    const r = numStandardRows + 1
-    for (let c = 1; c <= leftoverStandard; c++) {
-      if (currentSeatNumber <= standardSeatsCount) {
-        seats.push(buildSeat(r, c))
-        currentSeatNumber++
-      }
+  // Leftover standard seats (not enough for a full row) plus the 2 seats
+  // the back door skipped at BACK_DOOR_ROW are combined and laid out as
+  // full-width-as-possible rows (right to left, same as every other row) —
+  // for both fleet sizes (55/59) this is exactly one full 4-seat row, never
+  // two half-empty rows stacked on top of each other.
+  let nextRow = numStandardRows + 1
+  let extraSeats = leftoverStandard + DOOR_GAP_SEATS
+  while (extraSeats > 0) {
+    const seatsThisRow = Math.min(4, extraSeats)
+    for (let c = 4; c >= 4 - seatsThisRow + 1; c--) {
+      seats.push(buildSeat(nextRow, c))
+      currentSeatNumber++
     }
+    extraSeats -= seatsThisRow
+    nextRow++
   }
 
-  // Generate back row (up to 5 seats together in last row)
-  const backRowIndex = Math.ceil(standardSeatsCount / 4) + 1
+  // Generate back row (5 seats together in last row) — right to left, same
+  // as every other row.
+  const backRowIndex = nextRow
   const backRowSeatsCount = totalSeats - (currentSeatNumber - 1)
 
-  for (let c = 1; c <= backRowSeatsCount; c++) {
+  for (let c = backRowSeatsCount; c >= 1; c--) {
     seats.push(buildSeat(backRowIndex, c))
     currentSeatNumber++
   }
@@ -79,7 +116,7 @@ export function isNaturalPair(seatA: number, seatB: number, totalSeats: number):
   const min = Math.min(seatA, seatB)
 
   // Standard rows: odd seat number starting pair (1,2), (3,4), (5,6), (7,8)...
-  const standardLimit = totalSeats - 5
+  const standardLimit = totalSeats - BACK_ROW_SEAT_COUNT
   if (min < standardLimit) {
     return min % 2 === 1
   }
@@ -177,7 +214,7 @@ export function autoSuggestPairs(allSeats: Seat[], count: number, totalSeats: nu
   const singlesNeeded = count % 2
 
   // Search for available natural pairs in standard rows
-  const standardLimit = totalSeats - 5
+  const standardLimit = totalSeats - BACK_ROW_SEAT_COUNT
   for (let s = 1; s < standardLimit; s += 2) {
     if (pairsNeeded <= 0) break
     if (availableSeatNumbers.has(s) && availableSeatNumbers.has(s + 1)) {

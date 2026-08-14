@@ -84,6 +84,7 @@ function fakeJwt(payload: Record<string, unknown>): string {
 describe('GatewayAdminLogin (wired inside GatewayPage) — admin auth security', () => {
   beforeEach(() => {
     vi.clearAllMocks()
+    localStorage.clear()
     useStore.setState({ authToken: null, adminUser: { email: '', name: '', isLoggedIn: false } })
   })
 

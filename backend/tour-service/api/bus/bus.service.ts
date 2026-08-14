@@ -170,13 +170,54 @@ export async function createDefaultBus(tourId: Types.ObjectId) {
   return insertBus(tourId, "אוטובוס 1", seatLayout, [], true)
 }
 
+/**
+ * Reconciles a bus's actual seat documents to a new seatLayout, by diffing
+ * position sets — additions get new `available` seats, removals delete
+ * theirs. In practice the frontend always sends a plain "1".."N" list, so
+ * this only ever grows/shrinks the tail, but the diff is general (works for
+ * any position set, not just a size change).
+ *
+ * Never destroys occupied state: if any seat slated for removal is not
+ * `available`, the whole resize is rejected (400) rather than silently
+ * losing a booking — mirrors the frontend's own "can't shrink below the
+ * highest occupied seat" guard, enforced here since the client can't be
+ * trusted alone.
+ */
+async function resizeSeats(busId: Types.ObjectId, seatLayout: Record<string, unknown>): Promise<void> {
+  const targetPositions = seatPositionsFromLayout(seatLayout)
+  if (targetPositions.length === 0) {
+    throw new HttpError(400, "seatLayout produced no seats")
+  }
+  const targetSet = new Set(targetPositions)
+
+  const existingSeats = await Seat.find({ busId }).select("position status").lean()
+  const existingSet = new Set(existingSeats.map((s: any) => s.position as string))
+
+  const toRemove = existingSeats.filter((s: any) => !targetSet.has(s.position))
+  const toAdd = targetPositions.filter((p) => !existingSet.has(p))
+
+  if (toRemove.length > 0) {
+    if (toRemove.some((s: any) => s.status !== "available")) {
+      throw new HttpError(400, "Cannot shrink the bus below an occupied or reserved seat")
+    }
+    await Seat.deleteMany({ busId, position: { $in: toRemove.map((s: any) => s.position) } })
+  }
+
+  if (toAdd.length > 0) {
+    await Seat.insertMany(toAdd.map((position) => ({ busId, position, status: "available" })))
+  }
+}
+
 export async function updateBus(tourUuid: string, busUuid: string, input: BusInput) {
   const existing = await resolveBusDoc(tourUuid, busUuid)
 
   const update: Record<string, unknown> = {}
   if (input.name !== undefined) update.name = input.name
   if (input.pickupPoints !== undefined) update.pickupPoints = input.pickupPoints
-  // seatLayout intentionally not remapped here to avoid destroying seat state.
+  if (input.seatLayout !== undefined) {
+    update.seatLayout = input.seatLayout
+    await resizeSeats(existing._id as Types.ObjectId, input.seatLayout)
+  }
 
   const bus = await Bus.findOneAndUpdate(
     { _id: existing._id, deletedAt: null },

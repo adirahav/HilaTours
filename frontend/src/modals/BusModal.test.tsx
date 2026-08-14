@@ -27,7 +27,7 @@ const editBus: Bus = {
   busName: 'אוטובוס 1',
   description: 'ממוזג',
   pickupPoints: ['תל אביב', 'נתניה'],
-  totalSeats: 54,
+  totalSeats: 55,
   driverSide: 'left',
   doorPosition: 'front',
   isDefault: false,
@@ -74,15 +74,14 @@ describe('BusModal', () => {
     expect(screen.getByText('יש להזין שם/מזהה לאוטובוס')).toBeInTheDocument()
   })
 
-  it('blocks submit and shows an inline error (not a toast) when there are no pickup points', async () => {
+  it('allows submit with no pickup points', async () => {
     const user = userEvent.setup()
     const onSave = vi.fn()
     render(<BusModal isOpen onClose={() => {}} onSave={onSave} />)
     await user.type(screen.getByLabelText(/שם\/מזהה האוטובוס/), 'אוטובוס בדיקה')
     await user.click(screen.getByRole('button', { name: 'שמור אוטובוס' }))
-    expect(onSave).not.toHaveBeenCalled()
-    expect(toastMock.error).not.toHaveBeenCalled()
-    expect(screen.getByText('אנא הוסף לפחות נקודת איסוף אחת לאוטובוס')).toBeInTheDocument()
+    expect(onSave).toHaveBeenCalled()
+    expect(screen.queryByText('אנא הוסף לפחות נקודת איסוף אחת לאוטובוס')).not.toBeInTheDocument()
   })
 
   it('adds and removes pickup points', async () => {
@@ -109,10 +108,15 @@ describe('BusModal', () => {
     expect(after[0]).toContain('נתניה')
   })
 
-  it('updates totalSeats from the range slider', async () => {
+  it('selects the bus size matching the edited bus, and switching picks the other one', async () => {
+    const user = userEvent.setup()
     render(<BusModal isOpen onClose={() => {}} onSave={() => {}} busToEdit={editBus} />)
-    const slider = screen.getByLabelText(/מספר מושבים/) as HTMLInputElement
-    expect(slider.value).toBe('54')
+    expect(screen.getByRole('radio', { name: '55 מושבים' })).toHaveAttribute('aria-checked', 'true')
+    expect(screen.getByRole('radio', { name: '59 מושבים' })).toHaveAttribute('aria-checked', 'false')
+
+    await user.click(screen.getByRole('radio', { name: '59 מושבים' }))
+    expect(screen.getByRole('radio', { name: '59 מושבים' })).toHaveAttribute('aria-checked', 'true')
+    expect(screen.getByRole('radio', { name: '55 מושבים' })).toHaveAttribute('aria-checked', 'false')
   })
 
   it('calls onSave with trimmed values and closes on valid submit', async () => {
@@ -132,24 +136,24 @@ describe('BusModal', () => {
       'אוטובוס חדש',
       'תיאור',
       ['תל אביב'],
-      52,
+      55,
       'left',
       'front'
     )
     expect(onClose).toHaveBeenCalled()
   })
 
-  it('blocks reducing seats below occupied seat numbers (Q6)', async () => {
+  it('disables a bus size smaller than the highest occupied seat number (Q6)', async () => {
     const onSave = vi.fn()
     const busWithOccupied: Bus = {
       ...editBus,
-      totalSeats: 58,
+      totalSeats: 59,
       seats: [buildSeat(56, 'taken')]
     }
     render(<BusModal isOpen onClose={() => {}} onSave={onSave} busToEdit={busWithOccupied} />)
-    const slider = screen.getByLabelText(/מספר מושבים/) as HTMLInputElement
-    // The slider minimum is clamped to the highest occupied seat number.
-    expect(slider.min).toBe('56')
+    // 55 < 56 (the highest occupied seat number) so it must be disabled.
+    expect(screen.getByRole('radio', { name: '55 מושבים' })).toBeDisabled()
+    expect(screen.getByRole('radio', { name: '59 מושבים' })).not.toBeDisabled()
   })
 
   it('closes on Escape', async () => {

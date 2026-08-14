@@ -24,6 +24,7 @@ export const PERMISSION_KEYS = [
   "seat:toggleReserve",
   "seat:manualAssign",
   "seat:swapMove",
+  "seat:updateOccupant",
 ] as const
 
 export type PermissionKey = (typeof PERMISSION_KEYS)[number]

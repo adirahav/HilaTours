@@ -77,16 +77,18 @@ describe('BusMap', () => {
     expect(onToggle).toHaveBeenCalledWith(1)
   })
 
-  it('shows an error toast and does not select a reserved seat', async () => {
+  it('does not select a reserved seat and shows no toast — the button is disabled', async () => {
     const user = userEvent.setup()
     const onToggle = vi.fn()
     const seats = [buildSeat(1, 'reserved')]
     render(
       <BusMap seats={seats} totalSeats={6} selectedSeatNumbers={[]} onToggleSelectSeat={onToggle} />
     )
-    await user.click(screen.getByRole('button', { name: /מושב 1/ }))
+    const seatButton = screen.getByRole('button', { name: /מושב 1/ })
+    expect(seatButton).toBeDisabled()
+    await user.click(seatButton)
     expect(onToggle).not.toHaveBeenCalled()
-    expect(toastMock.error).toHaveBeenCalled()
+    expect(toastMock.error).not.toHaveBeenCalled()
   })
 
   it('calls onAdminClickSeat in admin mode instead of selecting', async () => {
@@ -118,7 +120,6 @@ describe('BusMap', () => {
       <BusMap seats={seats} totalSeats={6} selectedSeatNumbers={[]} onToggleSelectSeat={() => {}} />
     )
     expect(screen.getByText('ישראל ישראלי')).toBeInTheDocument()
-    expect(screen.getByText('ללא תחנה')).toBeInTheDocument()
     // Exactly one warning badge — seat 2 has a pickup point, seat 1 doesn't.
     expect(screen.getAllByTitle('אזהרה: לא נבחרה תחנת איסוף')).toHaveLength(1)
     expect(screen.getByText('דנה כהן')).toBeInTheDocument()

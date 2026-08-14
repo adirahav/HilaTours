@@ -27,28 +27,23 @@ interface BusModalProps {
   busToEdit?: Bus | null
 }
 
-const MIN_SEATS = 50
-const MAX_SEATS = 60
+// The fleet only has two physical bus sizes — not a free-form range.
+const BUS_SIZES = [55, 59] as const
+const DEFAULT_SEATS = BUS_SIZES[0]
 
-const DOOR_LABELS: Record<DoorPosition, string> = {
-  front: 'דלת קדמית',
-  middle: 'דלת אמצעית',
-  rear: 'דלת אחורית'
-}
-
-const DRIVER_LABELS: Record<DriverSide, string> = {
-  left: 'צד שמאל',
-  right: 'צד ימין'
-}
+// Every bus in the fleet has the same fixed door layout — a front door at
+// the driver's side plus a back door at row 8 (see BusMap.tsx) — so neither
+// is a per-bus choice; there's no UI for either. onSave still takes both
+// since the backend contract carries the fields.
+const DRIVER_SIDE: DriverSide = 'left'
+const DOOR_POSITION: DoorPosition = 'front'
 
 export function BusModal({ isOpen, onClose, onSave, busToEdit }: BusModalProps) {
   const [busName, setBusName] = useState('')
   const [description, setDescription] = useState('')
   const [pickupPoints, setPickupPoints] = useState<string[]>([])
   const [newPickup, setNewPickup] = useState('')
-  const [totalSeats, setTotalSeats] = useState<number>(52)
-  const [driverSide, setDriverSide] = useState<DriverSide>('left')
-  const [doorPosition, setDoorPosition] = useState<DoorPosition>('front')
+  const [totalSeats, setTotalSeats] = useState<number>(DEFAULT_SEATS)
   const [draggedIndex, setDraggedIndex] = useState<number | null>(null)
   const [dragOverIndex, setDragOverIndex] = useState<number | null>(null)
   const [nameError, setNameError] = useState('')
@@ -62,11 +57,11 @@ export function BusModal({ isOpen, onClose, onSave, busToEdit }: BusModalProps) 
   const dialogRef = useRef<HTMLDivElement>(null)
   const nameInputRef = useRef<HTMLInputElement>(null)
 
-  // Q6: reducing totalSeats below the highest occupied seat number is blocked.
+  // Q6: reducing totalSeats below the highest occupied seat number is blocked
+  // — so a bus size smaller than that is not a selectable option at all.
   const minSeats = useMemo(() => {
     const occupied = busToEdit?.seats?.filter((s) => s.seatStatus !== 'available') ?? []
-    const highestOccupied = occupied.reduce((max, s) => Math.max(max, s.seatNumber), 0)
-    return Math.max(MIN_SEATS, highestOccupied)
+    return occupied.reduce((max, s) => Math.max(max, s.seatNumber), 0)
   }, [busToEdit])
 
   useEffect(() => {
@@ -75,16 +70,12 @@ export function BusModal({ isOpen, onClose, onSave, busToEdit }: BusModalProps) 
       setBusName(busToEdit.busName)
       setDescription(busToEdit.description || '')
       setPickupPoints([...busToEdit.pickupPoints])
-      setTotalSeats(Math.max(busToEdit.totalSeats || 52, minSeats))
-      setDriverSide(busToEdit.driverSide || 'left')
-      setDoorPosition(busToEdit.doorPosition || 'front')
+      setTotalSeats(busToEdit.totalSeats || DEFAULT_SEATS)
     } else {
       setBusName('')
       setDescription('')
       setPickupPoints([])
-      setTotalSeats(52)
-      setDriverSide('left')
-      setDoorPosition('front')
+      setTotalSeats(DEFAULT_SEATS)
     }
     setNewPickup('')
     setNameError('')
@@ -188,17 +179,13 @@ export function BusModal({ isOpen, onClose, onSave, busToEdit }: BusModalProps) 
       setNameError('יש להזין שם/מזהה לאוטובוס')
       hasError = true
     }
-    if (pickupPoints.length === 0) {
-      setPickupError('אנא הוסף לפחות נקודת איסוף אחת לאוטובוס')
-      hasError = true
-    }
     // Q6: block reducing the seat count below already-occupied seat numbers.
     if (totalSeats < minSeats) {
       setSeatsError(`לא ניתן להפחית את מספר המושבים מתחת ל-${minSeats} (קיימים מושבים תפוסים)`)
       hasError = true
     }
     if (hasError) return
-    onSave(trimmedName, description.trim(), pickupPoints, totalSeats, driverSide, doorPosition)
+    onSave(trimmedName, description.trim(), pickupPoints, totalSeats, DRIVER_SIDE, DOOR_POSITION)
     onClose()
   }
 
@@ -230,7 +217,7 @@ export function BusModal({ isOpen, onClose, onSave, busToEdit }: BusModalProps) 
                 {busToEdit ? 'עריכת אוטובוס' : 'הוספת אוטובוס נוסף לטיול'}
               </h3>
               <p className="text-xs text-slate-500">
-                הגדר תיאור, נקודות איסוף ומספר מושבים (50-60)
+                הגדר תיאור, נקודות איסוף וגודל האוטובוס
               </p>
             </div>
           </div>
@@ -289,79 +276,46 @@ export function BusModal({ isOpen, onClose, onSave, busToEdit }: BusModalProps) 
             />
           </div>
 
-          {/* Driver side + Door position (PRD F9 door/driver config) */}
-          <div className="grid grid-cols-2 gap-3">
-            <div>
-              <label htmlFor={`${titleId}-driver`} className="block text-xs font-bold text-slate-700 mb-1">
-                צד הנהג:
-              </label>
-              <select
-                id={`${titleId}-driver`}
-                value={driverSide}
-                onChange={(e) => setDriverSide(e.target.value as DriverSide)}
-                className={cn(inputClass, 'cursor-pointer')}
-              >
-                {(Object.keys(DRIVER_LABELS) as DriverSide[]).map((side) => (
-                  <option key={side} value={side}>
-                    {DRIVER_LABELS[side]}
-                  </option>
-                ))}
-              </select>
-            </div>
-            <div>
-              <label htmlFor={`${titleId}-door`} className="block text-xs font-bold text-slate-700 mb-1">
-                מיקום הדלת:
-              </label>
-              <select
-                id={`${titleId}-door`}
-                value={doorPosition}
-                onChange={(e) => setDoorPosition(e.target.value as DoorPosition)}
-                className={cn(inputClass, 'cursor-pointer')}
-              >
-                {(Object.keys(DOOR_LABELS) as DoorPosition[]).map((pos) => (
-                  <option key={pos} value={pos}>
-                    {DOOR_LABELS[pos]}
-                  </option>
-                ))}
-              </select>
-            </div>
-          </div>
-
           <div>
             <div className="flex items-center justify-between mb-1">
-              <label htmlFor={`${titleId}-seats`} className="block text-xs font-bold text-slate-700">
-                מספר מושבים באוטובוס (טווח 50-60):
-              </label>
-              <span className="text-xs font-extrabold text-blue-600 bg-blue-50 px-2 py-0.5 rounded-lg border border-blue-200">
-                {totalSeats} מושבים
+              <span id={`${titleId}-seats-label`} className="block text-xs font-bold text-slate-700">
+                גודל האוטובוס:
               </span>
             </div>
 
-            <input
-              id={`${titleId}-seats`}
-              type="range"
-              min={minSeats}
-              max={MAX_SEATS}
-              step={1}
-              value={totalSeats}
-              aria-invalid={!!seatsError}
+            <div
+              role="radiogroup"
+              aria-labelledby={`${titleId}-seats-label`}
               aria-describedby={seatsError ? seatsErrorId : undefined}
-              onChange={(e) => {
-                setTotalSeats(Number(e.target.value))
-                if (seatsError) setSeatsError('')
-              }}
-              className="w-full accent-blue-600 cursor-pointer h-2 bg-slate-200 rounded-lg focus:outline-none focus:ring-2 focus:ring-blue-500"
-            />
-            <div className="flex justify-between text-[11px] text-slate-400 mt-1 font-mono">
-              <span>{MIN_SEATS} מושבים</span>
-              <span>55 מושבים</span>
-              <span>{MAX_SEATS} מושבים</span>
+              className="grid grid-cols-2 gap-2"
+            >
+              {BUS_SIZES.map((size) => {
+                const disabled = size < minSeats
+                const selected = totalSeats === size
+                return (
+                  <button
+                    key={size}
+                    type="button"
+                    role="radio"
+                    aria-checked={selected}
+                    disabled={disabled}
+                    onClick={() => {
+                      setTotalSeats(size)
+                      if (seatsError) setSeatsError('')
+                    }}
+                    className={cn(
+                      'py-2.5 rounded-xl border-2 text-sm font-extrabold transition focus:outline-none focus-visible:ring-2 focus-visible:ring-blue-500',
+                      selected
+                        ? 'bg-blue-600 text-white border-blue-700 shadow-md'
+                        : 'bg-slate-50 text-slate-700 border-slate-300 hover:bg-slate-100',
+                      disabled && 'opacity-40 cursor-not-allowed hover:bg-slate-50'
+                    )}
+                  >
+                    {size} מושבים
+                  </button>
+                )
+              })}
             </div>
-            {minSeats > MIN_SEATS && !seatsError && (
-              <p className="text-[11px] text-amber-600 mt-1">
-                לא ניתן להפחית מתחת ל-{minSeats} מושבים - קיימים מושבים תפוסים.
-              </p>
-            )}
             {seatsError && (
               <p
                 id={seatsErrorId}

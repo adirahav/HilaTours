@@ -14,6 +14,8 @@ import {
 import { useStore } from '../store/store'
 import { tourService } from '../services/tour.service'
 import { seatService } from '../services/seat.service'
+import { useSeatSocket } from '../hooks/useSeatSocket'
+import { getStoredBusId, setStoredBusId } from '../lib/busSelectionStorage'
 import { BusMap } from '../components/bus/BusMap'
 import { validateSeatPairing, autoSuggestPairs } from '../lib/busLayoutHelper'
 import { cn } from '../lib/utils'
@@ -71,16 +73,20 @@ export function PassengerViewPage() {
     return () => clearSeatSelection()
   }, [clearSeatSelection])
 
-  // Default to the tour's first bus once the tour is available.
+  // Restore the last bus picked for this tour once it's available; fall back
+  // to the first bus if none was stored or the stored one no longer exists.
   useEffect(() => {
-    if (currentTour && !selectedBusId && currentTour.buses.length > 0) {
-      setSelectedBusId(currentTour.buses[0].id)
-    }
+    if (!currentTour || selectedBusId || currentTour.buses.length === 0) return
+    const storedBusId = getStoredBusId(currentTour.id)
+    const restored = currentTour.buses.find((b) => b.id === storedBusId)
+    setSelectedBusId((restored ?? currentTour.buses[0]).id)
   }, [currentTour, selectedBusId])
 
   const activeBus =
     currentTour?.buses.find((b) => b.id === selectedBusId) ||
     currentTour?.buses[0]
+
+  useSeatSocket(activeBus?.id)
 
   const totalSeats = activeBus?.totalSeats ?? 52
 
@@ -150,7 +156,6 @@ export function PassengerViewPage() {
       setConfirmedSeats(sortedSeatNumbers)
       setIsSuccess(true)
       clearSeatSelection()
-      toast.success('בקשת השריון נשלחה בהצלחה וממתינה לאישור.')
     } catch (err) {
       const status = (err as { response?: { status?: number } })?.response
         ?.status
@@ -260,6 +265,7 @@ export function PassengerViewPage() {
               value={selectedBusId}
               onChange={(e) => {
                 setSelectedBusId(e.target.value)
+                if (currentTour) setStoredBusId(currentTour.id, e.target.value)
                 clearSeatSelection()
                 setPickupPoint('')
                 setErrorMsg('')

@@ -25,6 +25,11 @@ const PERMISSIONS: Array<{ key: string; description: string; category: 'tour' | 
   { key: 'seat:toggleReserve', description: 'Reserve or unreserve a seat', category: 'seat' },
   { key: 'seat:manualAssign', description: 'Manually assign a passenger to a seat', category: 'seat' },
   { key: 'seat:swapMove', description: 'Swap or move a passenger between seats', category: 'seat' },
+  {
+    key: 'seat:updateOccupant',
+    description: 'Edit passenger details on an already pending/taken seat',
+    category: 'seat',
+  },
 ]
 
 const ROLES: Array<{ name: string; description: string; permissions: string[] }> = [

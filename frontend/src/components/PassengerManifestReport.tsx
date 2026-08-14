@@ -123,7 +123,6 @@ export function PassengerManifestReport({ isLoading = false }: PassengerManifest
     if (!seatId) return
     try {
       await seatService.approve(tourId, busId, seatId)
-      toast.success("המושב אושר בהצלחה.")
     } catch (err) {
       handleSeatError(err, "אישור המושב נכשל, נסו שוב.")
     }
@@ -134,7 +133,6 @@ export function PassengerManifestReport({ isLoading = false }: PassengerManifest
     if (!seatId) return
     try {
       await seatService.cancel(tourId, busId, seatId)
-      toast.success("המושב שוחרר בהצלחה.")
     } catch (err) {
       handleSeatError(err, "שחרור המושב נכשל, נסו שוב.")
     }
@@ -164,7 +162,6 @@ export function PassengerManifestReport({ isLoading = false }: PassengerManifest
     try {
       await navigator.clipboard.writeText(lines.join("\n"))
       setCopiedReport(true)
-      toast.success("הדוח הועתק ללוח.")
       setTimeout(() => setCopiedReport(false), 2500)
     } catch (err) {
       console.log("[MANIFEST] copy to clipboard failed", err)

@@ -61,6 +61,10 @@ Define canonical domain terms and approved short forms used across code, API rou
 - **Canonical meaning:** The admin action that moves or swaps a passenger between two seats (typically via drag & drop).
 - **Use:** Always `swapMove`, not `relocate`, `transfer`, or `dragDrop`.
 
+### `updateOccupant`
+- **Canonical meaning:** The admin action that edits the passenger details (name/phone/pickup point/notes) on a seat already in `pending` or `taken`, optionally toggling between those two statuses in the same call — unlike `manualAssign`, it never touches an `available` seat.
+- **Use:** Always `updateOccupant`, not `editSeat` or `updateSeat`.
+
 ### `manifest`
 - **Canonical meaning:** A consolidated, filterable report of all passengers on a bus, grouped by pickup point.
 - **Use:** Always `manifest`, not `report`, `passengerList`, or `roster`.
@@ -75,7 +79,7 @@ Define canonical domain terms and approved short forms used across code, API rou
 
 ### `permission`
 - **Canonical meaning:** A single named capability, keyed `<category>:<action>` (e.g. `tour:insert`, `seat:approve`), that a `role` can hold.
-- **Use:** The `<action>` segment of any `seat:*` permission key must reuse the canonical seat-action terms already defined above (`bookings`, `approve`, `cancel`, `toggleReserve`, `manualAssign`, `swapMove`) — never introduce a synonym (e.g. `seat:deny`, `seat:move`, `seat:insert` are incorrect; use `seat:cancel`, `seat:swapMove`, `seat:bookings`).
+- **Use:** The `<action>` segment of any `seat:*` permission key must reuse the canonical seat-action terms already defined above (`bookings`, `approve`, `cancel`, `toggleReserve`, `manualAssign`, `swapMove`, `updateOccupant`) — never introduce a synonym (e.g. `seat:deny`, `seat:move`, `seat:insert` are incorrect; use `seat:cancel`, `seat:swapMove`, `seat:bookings`).
 
 ### `passenger`
 - **Canonical meaning:** The end user requesting a seat on a tour's bus. Not an authenticated account in the current API surface (no passenger login/signup exists).

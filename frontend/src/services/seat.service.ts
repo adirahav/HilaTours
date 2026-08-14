@@ -25,7 +25,22 @@ interface RawMutatedSeat {
 // the frontend-only seatNumber/row/col fields either way. Always merge by id
 // into the already-loaded seats (never blind-replace), keeping the existing
 // seat's layout fields and overlaying the mutated ones.
-function mergeSeatUpdate(busId: string, updated: RawMutatedSeat[]): void {
+// Exposed for socket-pushed updates (see hooks/useSeatSocket.ts) — the
+// payload broadcast by the backend on every seat mutation has the same
+// RawMutatedSeat shape as the REST responses, so the merge logic is shared.
+export function applyRemoteSeatUpdate(busId: string, updated: RawMutatedSeat[]): void {
+  mergeSeatUpdate(busId, updated)
+}
+
+// `stripPii` is for the passenger booking response: the REST reply legitimately
+// contains the name/pickup the passenger herself just typed, but the shared
+// seat-map store has no notion of "this is my own booking" — anything merged
+// in renders identically for every viewer of that store slice (e.g. if she
+// navigates back to the map after her success screen, before a reload
+// re-fetches through the PII-stripped public endpoint). So the passenger
+// flow never merges name/pickup at all, matching what every other passenger
+// already sees for that seat (SEV-001 / see socket.service.ts's room split).
+function mergeSeatUpdate(busId: string, updated: RawMutatedSeat[], stripPii = false): void {
   const tours = useStore.getState().tours
   const bus = tours.flatMap((t) => t.buses).find((b) => b.id === busId)
   const existing = bus?.seats ?? []
@@ -37,10 +52,10 @@ function mergeSeatUpdate(busId: string, updated: RawMutatedSeat[]): void {
     return {
       ...seat,
       seatStatus: toSeatStatus(raw.status),
-      passengerName: raw.passengerName ?? undefined,
-      passengerPhone: raw.passengerPhone ?? undefined,
-      pickupPoint: raw.pickupPointName ?? undefined,
-      notes: raw.notes ?? undefined,
+      passengerName: stripPii ? undefined : raw.passengerName ?? undefined,
+      passengerPhone: stripPii ? undefined : raw.passengerPhone ?? undefined,
+      pickupPoint: stripPii ? undefined : raw.pickupPointName ?? undefined,
+      notes: stripPii ? undefined : raw.notes ?? undefined,
       updatedAt: raw.updatedAt ?? seat.updatedAt
     }
   })
@@ -68,7 +83,7 @@ export const seatService = {
         notes: req.notes
       }
     )
-    mergeSeatUpdate(req.busId, seats)
+    mergeSeatUpdate(req.busId, seats, true)
   },
 
   // approve/cancel/toggle-reserve (SeatApproveRequest etc.) all take
@@ -105,6 +120,29 @@ export const seatService = {
       tourClient,
       `${base(tourId, busId)}/manual-assign`,
       payload
+    )
+    mergeSeatUpdate(busId, seats)
+  },
+
+  // Edits passenger details on a seat that's already pending/taken (optionally
+  // toggling between the two) — never touches an available seat, unlike
+  // manualAssign. See .doc/glossary.md's `updateOccupant` entry.
+  async updateOccupant(
+    tourId: string,
+    busId: string,
+    seatId: string,
+    payload: {
+      passengerName: string
+      passengerPhone?: string
+      pickupPoint?: string
+      notes?: string
+      status: 'taken' | 'pending'
+    }
+  ): Promise<void> {
+    const seats = await httpService.post<RawMutatedSeat[]>(
+      tourClient,
+      `${base(tourId, busId)}/update-occupant`,
+      { seatId, ...payload }
     )
     mergeSeatUpdate(busId, seats)
   },

@@ -4,6 +4,8 @@ import { Clock, CheckCircle2 } from "lucide-react"
 import { useStore } from "../store/store"
 import { seatService } from "../services/seat.service"
 import { busService } from "../services/bus.service"
+import { useSeatSocket } from "../hooks/useSeatSocket"
+import { getStoredBusId, getStoredTourId, setStoredBusId, setStoredTourId } from "../lib/busSelectionStorage"
 import { BusMap } from "./bus/BusMap"
 import { ManualAssignModal } from "../modals/ManualAssignModal"
 import type { Seat, SeatStatus } from "../types/seat.types"
@@ -31,16 +33,18 @@ export function SeatManagement({ isLoading = false }: SeatManagementProps) {
   const activeBus =
     activeTour?.buses.find((b) => b.id === selectedBusId) ?? activeTour?.buses[0]
 
+  // Restore the last tour/bus picked in this browser; fall back to the first
+  // one if none was stored or the stored one no longer exists.
   useEffect(() => {
-    if (!tours.some((t) => t.id === selectedTourId)) {
-      setSelectedTourId(tours[0]?.id ?? "")
-    }
+    if (tours.some((t) => t.id === selectedTourId)) return
+    const restored = tours.find((t) => t.id === getStoredTourId())
+    setSelectedTourId((restored ?? tours[0])?.id ?? "")
   }, [tours, selectedTourId])
 
   useEffect(() => {
-    if (activeTour && !activeTour.buses.some((b) => b.id === selectedBusId)) {
-      setSelectedBusId(activeTour.buses[0]?.id ?? "")
-    }
+    if (!activeTour || activeTour.buses.some((b) => b.id === selectedBusId)) return
+    const restored = activeTour.buses.find((b) => b.id === getStoredBusId(activeTour.id))
+    setSelectedBusId((restored ?? activeTour.buses[0])?.id ?? "")
   }, [activeTour, selectedBusId])
 
   // GET /tour (used to hydrate the store) is public and strips passenger PII
@@ -61,6 +65,8 @@ export function SeatManagement({ isLoading = false }: SeatManagementProps) {
     window.addEventListener("focus", load)
     return () => window.removeEventListener("focus", load)
   }, [activeTourId, activeBusId])
+
+  useSeatSocket(activeBusId)
 
   const seats = activeBus?.seats ?? []
 
@@ -113,7 +119,6 @@ export function SeatManagement({ isLoading = false }: SeatManagementProps) {
     if (!seatId) return
     try {
       await seatService.approve(tourId, busId, seatId)
-      toast.success("המושב אושר בהצלחה.")
     } catch (err) {
       handleSeatError(err, "אישור המושב נכשל, נסו שוב.")
     }
@@ -124,7 +129,6 @@ export function SeatManagement({ isLoading = false }: SeatManagementProps) {
     if (!seatId) return
     try {
       await seatService.cancel(tourId, busId, seatId)
-      toast.success("המושב שוחרר בהצלחה.")
     } catch (err) {
       handleSeatError(err, "שחרור המושב נכשל, נסו שוב.")
     }
@@ -135,7 +139,6 @@ export function SeatManagement({ isLoading = false }: SeatManagementProps) {
     if (!seatId) return
     try {
       await seatService.toggleReserve(tourId, busId, seatId)
-      toast.success("סטטוס השמירה עודכן.")
     } catch (err) {
       handleSeatError(err, "עדכון סטטוס השמירה נכשל, נסו שוב.")
     }
@@ -150,28 +153,38 @@ export function SeatManagement({ isLoading = false }: SeatManagementProps) {
     status: "taken" | "pending"
   ) => {
     try {
-      await seatService.manualAssign(tourId, busId, {
-        tourId,
-        busId,
-        seatNumbers: [seatNumber],
-        passengerName,
-        passengerPhone,
-        pickupPoint,
-        notes,
-        status
-      })
-      toast.success("הנוסע שובץ למושב בהצלחה.")
+      // A seat already pending/taken has an occupant to edit in place —
+      // manualAssign only ever targets an available seat (it 400s otherwise).
+      if (selectedSeatForModal && selectedSeatForModal.seatStatus !== "available") {
+        await seatService.updateOccupant(tourId, busId, selectedSeatForModal.id, {
+          passengerName,
+          passengerPhone,
+          pickupPoint,
+          notes,
+          status
+        })
+      } else {
+        await seatService.manualAssign(tourId, busId, {
+          tourId,
+          busId,
+          seatNumbers: [seatNumber],
+          passengerName,
+          passengerPhone,
+          pickupPoint,
+          notes,
+          status
+        })
+      }
       setIsAssignModalOpen(false)
       setSelectedSeatForModal(null)
     } catch (err) {
-      handleSeatError(err, "שיבוץ הנוסע נכשל, נסו שוב.")
+      handleSeatError(err, "עדכון פרטי הנוסע נכשל, נסו שוב.")
     }
   }
 
   const handleMoveSeat = async (fromSeatNumber: number, toSeatNumber: number) => {
     try {
       await seatService.swapMove(tourId, busId, fromSeatNumber, toSeatNumber)
-      toast.success("המושב הועבר בהצלחה.")
     } catch (err) {
       handleSeatError(err, "העברת המושב נכשלה, נסו שוב.")
     }
@@ -194,7 +207,6 @@ export function SeatManagement({ isLoading = false }: SeatManagementProps) {
         }
       }
     }
-    if (approved > 0) toast.success("אושרו " + approved + " בקשות בהצלחה.")
     if (conflicts > 0) {
       toast.error(conflicts + " בקשות כבר שונו על ידי פעולה אחרת. רועננו את המפה.")
     } else if (approved === 0) {
@@ -218,7 +230,10 @@ export function SeatManagement({ isLoading = false }: SeatManagementProps) {
               <select
                 id="seat-mgmt-tour"
                 value={activeTour.id}
-                onChange={(e) => setSelectedTourId(e.target.value)}
+                onChange={(e) => {
+                  setSelectedTourId(e.target.value)
+                  setStoredTourId(e.target.value)
+                }}
                 className="w-full bg-slate-50 border border-slate-300 font-bold text-slate-900 rounded-2xl px-3 py-2 text-sm focus:ring-2 focus:ring-amber-500 focus:outline-none"
               >
                 {tours.map((tour) => (
@@ -236,7 +251,10 @@ export function SeatManagement({ isLoading = false }: SeatManagementProps) {
               <select
                 id="seat-mgmt-bus"
                 value={activeBus.id}
-                onChange={(e) => setSelectedBusId(e.target.value)}
+                onChange={(e) => {
+                  setSelectedBusId(e.target.value)
+                  if (activeTour) setStoredBusId(activeTour.id, e.target.value)
+                }}
                 className="w-full bg-slate-50 border border-slate-300 font-bold text-slate-900 rounded-2xl px-3 py-2 text-sm focus:ring-2 focus:ring-amber-500 focus:outline-none"
               >
                 {activeTour.buses.map((bus) => (
@@ -331,6 +349,8 @@ export function SeatManagement({ isLoading = false }: SeatManagementProps) {
             setIsAssignModalOpen(true)
           }}
           onQuickToggleReserve={(seat) => handleToggleReserveSeat(seat.seatNumber)}
+          onQuickApprove={(seat) => handleApproveSeat(seat.seatNumber)}
+          onQuickCancel={(seat) => handleCancelSeat(seat.seatNumber)}
           onMoveSeat={handleMoveSeat}
         />
       </div>

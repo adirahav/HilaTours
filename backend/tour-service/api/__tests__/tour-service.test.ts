@@ -935,16 +935,53 @@ describe("Tour/bus write payloads are whitelisted", () => {
     expect(list.body.some((t: any) => t.id === created.body.id)).toBe(true)
   })
 
-  it("PUT /tour/:tourId/buses/:busId cannot remap seatLayout and destroy seat state", async () => {
+  it("PUT /tour/:tourId/buses/:busId grows the seat count when seatLayout asks for more seats", async () => {
     const tour = await makeTour()
-    const bus = await makeBus(tour.id)
+    const bus = await makeBus(tour.id) // 4 seats (rows:2, columns:2)
     await request(app)
       .put(`${API_BASE}/tour/${tour.id}/buses/${bus.id}`)
       .set(auth)
-      .send({ name: "Bus 1", seatLayout: { rows: 9, columns: 9 } })
+      .send({ name: "Bus 1", seatLayout: { positions: Array.from({ length: 6 }, (_, i) => String(i + 1)) } })
+      .expect(200)
+    const seats = await getSeats(tour.id, bus.id)
+    expect(seats.length).toBe(6)
+    expect(seats.every((s) => s.status === "available")).toBe(true)
+  })
+
+  it("PUT /tour/:tourId/buses/:busId shrinks the seat count, dropping only available seats", async () => {
+    const tour = await makeTour()
+    const bus = await makeBus(tour.id, {
+      seatLayout: { positions: Array.from({ length: 6 }, (_, i) => String(i + 1)) },
+    })
+    await request(app)
+      .put(`${API_BASE}/tour/${tour.id}/buses/${bus.id}`)
+      .set(auth)
+      .send({ name: "Bus 1", seatLayout: { positions: Array.from({ length: 4 }, (_, i) => String(i + 1)) } })
       .expect(200)
     const seats = await getSeats(tour.id, bus.id)
     expect(seats.length).toBe(4)
+  })
+
+  it("PUT /tour/:tourId/buses/:busId refuses to shrink below an occupied seat (400), preserving all seats", async () => {
+    const tour = await makeTour()
+    const bus = await makeBus(tour.id, {
+      seatLayout: { positions: Array.from({ length: 6 }, (_, i) => String(i + 1)) },
+    })
+    const seatsBefore = await getSeats(tour.id, bus.id)
+    await request(app)
+      .post(`${API_BASE}/tour/${tour.id}/buses/${bus.id}/seats/bookings`)
+      .send({ seatIds: [seatsBefore[5].id], passengerName: "Dana" })
+      .expect(200)
+
+    await request(app)
+      .put(`${API_BASE}/tour/${tour.id}/buses/${bus.id}`)
+      .set(auth)
+      .send({ name: "Bus 1", seatLayout: { positions: Array.from({ length: 4 }, (_, i) => String(i + 1)) } })
+      .expect(400)
+
+    const seatsAfter = await getSeats(tour.id, bus.id)
+    expect(seatsAfter.length).toBe(6)
+    expect(seatsAfter.find((s) => s.id === seatsBefore[5].id)?.status).toBe("pending")
   })
 
   it("free-text tour/bus fields are stored and returned verbatim as strings", async () => {

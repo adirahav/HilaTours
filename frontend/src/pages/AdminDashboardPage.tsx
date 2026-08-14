@@ -113,7 +113,6 @@ export function AdminDashboardPage() {
           ? { id: tourToEdit.id, title, date, description }
           : { title, date, description }
       )
-      toast.success(tourToEdit ? 'הטיול עודכן בהצלחה.' : 'הטיול נוצר בהצלחה.')
       setIsTourModalOpen(false)
       setTourToEdit(null)
       await refetchTours()
@@ -131,7 +130,6 @@ export function AdminDashboardPage() {
       onConfirm: async () => {
         try {
           await tourService.remove(tourId)
-          toast.success('הטיול נמחק בהצלחה.')
           await refetchTours()
         } catch (err) {
           console.log('[ADMIN] delete tour failed', err)
@@ -173,7 +171,6 @@ export function AdminDashboardPage() {
         driverSide,
         doorPosition
       })
-      toast.success(busToEdit ? 'האוטובוס עודכן בהצלחה.' : 'האוטובוס נוצר בהצלחה.')
       setIsBusModalOpen(false)
       setBusToEdit(null)
       setBusTourId(null)
@@ -192,7 +189,6 @@ export function AdminDashboardPage() {
       onConfirm: async () => {
         try {
           await busService.remove(tourId, busId)
-          toast.success('האוטובוס נמחק בהצלחה.')
           await refetchTours()
         } catch (err) {
           console.log('[ADMIN] delete bus failed', err)

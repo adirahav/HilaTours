@@ -10,4 +10,20 @@
   --color-brand-500: #3b82f6;
   --color-brand-600: #2563eb;
   --color-brand-700: #1d4ed8;
+
+  --animate-scale-in: scale-in 150ms ease-out;
+}
+
+/* Seat long-press quick-menu entrance (BusMap.tsx SeatQuickMenu). Centering
+   itself is handled by the flex overlay wrapper, not this transform, so the
+   animation only ever scales/fades — nothing to fight over on mount. */
+@keyframes scale-in {
+  from {
+    opacity: 0;
+    transform: scale(0.9);
+  }
+  to {
+    opacity: 1;
+    transform: scale(1);
+  }
 }

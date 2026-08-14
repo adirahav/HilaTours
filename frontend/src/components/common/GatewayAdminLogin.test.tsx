@@ -17,6 +17,7 @@ const loginMock = vi.mocked(authService.login)
 describe('GatewayAdminLogin', () => {
   beforeEach(() => {
     vi.clearAllMocks()
+    localStorage.clear()
   })
 
   it('renders the login form fields and submit button', () => {

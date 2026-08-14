@@ -82,7 +82,6 @@ export function SignUpPage() {
         password
       })
       setMessage({ type: 'success', text: SIGNUP_SUCCESS })
-      toast.success(SIGNUP_SUCCESS)
       // No auto-login: the new account must authenticate through /login.
       redirectTimerRef.current = setTimeout(
         () => navigate('/login'),

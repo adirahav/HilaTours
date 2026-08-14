@@ -315,6 +315,65 @@ export async function manualAssign(busUuid: string, input: ManualAssignInput, ad
   return toClientSeats(seats, uuid)
 }
 
+export interface UpdateOccupantInput {
+  passengerName?: string
+  passengerPhone?: string
+  pickupPointName?: string
+  pickupPoint?: string
+  notes?: string
+  status?: "taken" | "pending"
+}
+
+/**
+ * Admin update-occupant: edits the passenger details on a seat that is
+ * already `pending` or `taken` — optionally toggling between those two
+ * statuses in the same call — without ever touching an `available` seat
+ * (that's `manualAssign`'s job, and only its job; see plan 016 Q6 /
+ * .doc/architecture.md's "manual-assign skips pending" note).
+ *
+ * Atomic, condition-checked on the seat currently being pending|taken, same
+ * as every other single-seat transition here. Two admins editing the same
+ * seat at once is last-write-wins (acceptable — it's an admin-only edit, not
+ * a passenger-facing availability race).
+ */
+export async function updateOccupant(
+  busUuid: string,
+  seatIdRaw: string,
+  input: UpdateOccupantInput,
+  adminUuid: string,
+) {
+  const { busId, busUuid: uuid } = await resolveBus(busUuid)
+  const [{ id: seatId }] = await resolveSeatRefs(busId, [seatIdRaw])
+  if (!input.passengerName) {
+    throw new HttpError(400, "passengerName is required")
+  }
+  const pickup = input.pickupPointName ?? input.pickupPoint
+  const targetStatus: "taken" | "pending" = input.status === "pending" ? "pending" : "taken"
+  const notes = typeof input.notes === "string" && input.notes.trim() ? input.notes.trim() : null
+  const now = new Date()
+
+  const seat = await Seat.findOneAndUpdate(
+    { _id: seatId, busId, status: { $in: ["pending", "taken"] } },
+    {
+      $set: {
+        status: targetStatus,
+        passengerName: input.passengerName,
+        passengerPhone: input.passengerPhone || null,
+        pickupPointName: pickup || null,
+        notes,
+        requestedAt: targetStatus === "pending" ? now : null,
+        approvedAt: targetStatus === "taken" ? now : null,
+        assignedBy: adminUuid,
+        updatedAt: now,
+      },
+    },
+    { returnDocument: "after" },
+  )
+  if (!seat) throw new HttpError(400, "Seat must be pending or taken to update its occupant")
+
+  return toClientSeats([seat], uuid)
+}
+
 export interface SwapMoveInput {
   /** Contract shape (SeatSwapMoveRequest): 1-based seat numbers. */
   fromSeat?: number
