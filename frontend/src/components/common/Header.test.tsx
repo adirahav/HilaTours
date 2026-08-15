@@ -52,7 +52,7 @@ describe('Header', () => {
   it('shows the default system title on the gateway route', () => {
     renderAt('/')
     expect(
-      screen.getByText(/מערכת ניהול וסידור מקומות ישיבה באוטובוסים/)
+      screen.getByText(/טיולי משפחות עצמאיות/)
     ).toBeInTheDocument()
   })
 
@@ -176,7 +176,7 @@ describe('Header', () => {
   it('falls back to the default title when the tour id has no matching tour', () => {
     renderAt('/tour/unknown-id')
     expect(
-      screen.getByText(/מערכת ניהול וסידור מקומות ישיבה באוטובוסים/)
+      screen.getByText(/טיולי משפחות עצמאיות/)
     ).toBeInTheDocument()
   })
 })

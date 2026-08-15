@@ -6,6 +6,7 @@ import { PassengerViewPage } from './pages/PassengerViewPage'
 import { LoginPage } from './pages/LoginPage'
 import { SignUpPage } from './pages/SignUpPage'
 import { AdminDashboardPage } from './pages/AdminDashboardPage'
+import { SeatActionPage } from './pages/SeatActionPage'
 import { NotFoundPage } from './pages/NotFoundPage'
 import { ProtectedRoute } from './components/common/ProtectedRoute'
 import { authService } from './services/auth.service'
@@ -43,6 +44,14 @@ export default function App() {
             <Route path="tours" element={null} />
             <Route path="report" element={null} />
           </Route>
+          <Route
+            path="admin/seat-action"
+            element={
+              <ProtectedRoute>
+                <SeatActionPage />
+              </ProtectedRoute>
+            }
+          />
           <Route path="404" element={<NotFoundPage />} />
           <Route path="*" element={<Navigate to="/404" replace />} />
         </Route>

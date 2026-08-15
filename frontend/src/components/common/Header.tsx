@@ -73,7 +73,7 @@ export function Header() {
     ? 'לוח בקרה ואישור מושבים באוטובוס'
     : activeTourTitle
       ? activeTourTitle
-      : 'מערכת ניהול וסידור מקומות ישיבה באוטובוסים'
+      : 'טיולי משפחות עצמאיות'
 
   const handleLogout = async () => {
     try {
@@ -99,11 +99,11 @@ export function Header() {
         >
           <img
             src={logo}
-            alt="הילה טורס"
+            alt="הילה בלליס"
             className="w-9 h-9 sm:w-10 sm:h-10 rounded-xl shrink-0 object-cover shadow-md shadow-blue-500/20"
           />
           <h1 className="text-base sm:text-lg md:text-xl font-bold tracking-tight text-white flex items-center gap-1.5 flex-wrap">
-            <span>הילה טורס</span>
+            <span>הילה בלליס</span>
             <span className="text-slate-400 font-normal text-xs sm:text-sm">- {title}</span>
           </h1>
         </Link>

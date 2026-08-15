@@ -1,6 +1,6 @@
 import { useEffect } from 'react'
 import type { ReactNode } from 'react'
-import { Navigate } from 'react-router-dom'
+import { Navigate, useLocation } from 'react-router-dom'
 import { useStore } from '../../store/store'
 import { authService } from '../../services/auth.service'
 
@@ -18,6 +18,7 @@ export function ProtectedRoute({ children }: { children: ReactNode }) {
   const roles = useStore(state => state.adminUser.roles)
   const isAdmin = roles?.includes('admin') ?? false
   const forceLogout = isAdminLoggedIn && !isAdmin
+  const location = useLocation()
 
   useEffect(() => {
     if (forceLogout) {
@@ -26,7 +27,12 @@ export function ProtectedRoute({ children }: { children: ReactNode }) {
   }, [forceLogout])
 
   if (!isAdminLoggedIn || forceLogout) {
-    return <Navigate to={forceLogout ? '/' : '/login'} replace />
+    if (forceLogout) return <Navigate to="/" replace />
+    // Preserve where the visitor was headed (e.g. an email approve/reject
+    // link) so LoginPage can send them there after a successful login,
+    // instead of always dropping them on the generic /admin default.
+    const target = `${location.pathname}${location.search}`
+    return <Navigate to={`/login?redirect=${encodeURIComponent(target)}`} replace />
   }
   return <>{children}</>
 }

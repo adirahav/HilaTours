@@ -2,11 +2,27 @@ import { Response } from "express"
 import { AuthedRequest } from "../auth/auth.middleware"
 import * as seatService from "./seat.service"
 import { emitSeatUpdate } from "../lib/socket"
+import { sendBookingNotification } from "./bookingNotification"
 
 export async function bookings(req: AuthedRequest, res: Response) {
   const seats = await seatService.requestBookings(String(req.params.busId), req.body)
   emitSeatUpdate(String(req.params.busId), seats)
   res.status(200).json(seats)
+
+  // Fire-and-forget: the email is a notification, not part of the booking's
+  // contract, so it runs after the response is already sent and a failure
+  // here must never affect (or delay) the passenger's booking outcome.
+  sendBookingNotification(
+    String(req.params.tourId),
+    String(req.params.busId),
+    seats,
+    {
+      name: String(req.body?.passengerName || ""),
+      phone: req.body?.passengerPhone,
+      pickupPointName: req.body?.pickupPointName,
+      notes: req.body?.notes,
+    },
+  ).catch((err) => console.log("[seat.controller] booking notification email failed", err))
 }
 
 export async function approve(req: AuthedRequest, res: Response) {

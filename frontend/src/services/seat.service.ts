@@ -106,6 +106,26 @@ export const seatService = {
     mergeSeatUpdate(busId, seats)
   },
 
+  // Bulk variants for the email approve/reject links (a booking can cover up
+  // to MAX_SEATS_PER_BOOKING seats at once — one link should act on all of them).
+  async approveMany(tourId: string, busId: string, seatIds: string[]): Promise<void> {
+    const seats = await httpService.post<RawMutatedSeat[]>(
+      tourClient,
+      `${base(tourId, busId)}/approve`,
+      { seatIds }
+    )
+    mergeSeatUpdate(busId, seats)
+  },
+
+  async cancelMany(tourId: string, busId: string, seatIds: string[]): Promise<void> {
+    const seats = await httpService.post<RawMutatedSeat[]>(
+      tourClient,
+      `${base(tourId, busId)}/cancel`,
+      { seatIds }
+    )
+    mergeSeatUpdate(busId, seats)
+  },
+
   async toggleReserve(tourId: string, busId: string, seatId: string): Promise<void> {
     const seats = await httpService.post<RawMutatedSeat[]>(
       tourClient,
