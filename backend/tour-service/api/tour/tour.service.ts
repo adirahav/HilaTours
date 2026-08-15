@@ -87,12 +87,12 @@ export async function softDeleteTour(tourUuid: string) {
   ).lean()
   if (!tour) throw new HttpError(404, message)
 
-  // Cascade soft-delete to buses; their seats are removed with the bus.
+  // Cascade soft-delete to buses and their seats — nothing here is hard-deleted.
   const buses = await Bus.find({ tourId: existing._id, deletedAt: null }).select("_id").lean()
   const busIds = buses.map((b: any) => b._id)
   if (busIds.length) {
     await Bus.updateMany({ _id: { $in: busIds } }, { $set: { deletedAt: now } })
-    await Seat.deleteMany({ busId: { $in: busIds } })
+    await Seat.updateMany({ busId: { $in: busIds }, deletedAt: null }, { $set: { deletedAt: now } })
   }
   return toClientTour(tour)
 }

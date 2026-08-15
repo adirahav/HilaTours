@@ -20,6 +20,7 @@ export interface SeatDoc extends Document {
   approvedAt: Date | null
   assignedBy: string | null
   updatedAt: Date
+  deletedAt: Date | null
 }
 
 const seatSchema = new Schema<SeatDoc>({
@@ -43,9 +44,22 @@ const seatSchema = new Schema<SeatDoc>({
   // Internal-only — never serialized to clients (it is admin PII-adjacent).
   assignedBy: { type: String, default: null },
   updatedAt: { type: Date, default: Date.now },
+  // Set when the owning bus/tour is soft-deleted (see tour.service.softDeleteTour
+  // and bus.service.softDeleteBus) — seats themselves are never hard-deleted by
+  // that path anymore, matching Tour/Bus. Still hard-deleted by
+  // bus.service.resizeSeats when a layout genuinely shrinks (a removed seat
+  // position isn't "soft" state, it no longer exists in the layout).
+  deletedAt: { type: Date, default: null },
 })
 
 applyUuidIdentity(seatSchema)
+
+// Exclude soft-deleted seats automatically, same pattern as Tour/Bus.
+seatSchema.pre(/^find/, function (this: any) {
+  if (!("deletedAt" in this.getFilter())) {
+    this.where({ deletedAt: null })
+  }
+})
 
 // Unique seat position per bus + fast seat-map queries by status.
 seatSchema.index({ busId: 1, position: 1 }, { unique: true })

@@ -236,12 +236,13 @@ export async function softDeleteBus(tourUuid: string, busUuid: string) {
     throw new HttpError(400, "The tour's default bus cannot be deleted")
   }
 
+  const now = new Date()
   const bus = await Bus.findOneAndUpdate(
     { _id: existing._id, deletedAt: null },
-    { $set: { deletedAt: new Date() } },
+    { $set: { deletedAt: now } },
     { returnDocument: "after" },
   ).lean()
   if (!bus) throw new HttpError(404, message)
-  await Seat.deleteMany({ busId: existing._id })
+  await Seat.updateMany({ busId: existing._id, deletedAt: null }, { $set: { deletedAt: now } })
   return toClientBus(bus, tourUuid)
 }
