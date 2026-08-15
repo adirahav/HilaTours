@@ -5,6 +5,7 @@ import { useStore } from '../store/store'
 import { tourService } from '../services/tour.service'
 import { GatewayTours } from '../components/common/GatewayTours'
 import { GatewayAdminLogin } from '../components/common/GatewayAdminLogin'
+import { filterUpcomingTours } from '../lib/tourDate'
 
 // Landing gateway: passengers pick a tour, admins log in.
 export function GatewayPage() {
@@ -44,7 +45,7 @@ export function GatewayPage() {
           </div>
         ) : (
           <GatewayTours
-            tours={tours}
+            tours={filterUpcomingTours(tours)}
             // Encode the id so a server-supplied value can never break out of
             // the passenger route (e.g. "../admin") via path traversal.
             onSelectTour={tourId =>

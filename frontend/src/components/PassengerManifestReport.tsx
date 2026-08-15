@@ -5,6 +5,7 @@ import { useStore } from "../store/store"
 import { seatService } from "../services/seat.service"
 import { busService } from "../services/bus.service"
 import { cn } from "../lib/utils"
+import { filterUpcomingTours } from "../lib/tourDate"
 
 type ReportFilter = "all" | "pending" | "taken" | "reserved"
 
@@ -21,7 +22,8 @@ interface PassengerManifestReportProps {
 // goes through seatService which re-syncs the store, and the counts derive from
 // that state.
 export function PassengerManifestReport({ isLoading = false }: PassengerManifestReportProps) {
-  const tours = useStore((state) => state.tours)
+  const allTours = useStore((state) => state.tours)
+  const tours = useMemo(() => filterUpcomingTours(allTours), [allTours])
 
   const [selectedTourId, setSelectedTourId] = useState("")
   const [selectedBusId, setSelectedBusId] = useState("")

@@ -6,6 +6,7 @@ import { seatService } from "../services/seat.service"
 import { busService } from "../services/bus.service"
 import { useSeatSocket } from "../hooks/useSeatSocket"
 import { getStoredBusId, getStoredTourId, setStoredBusId, setStoredTourId } from "../lib/busSelectionStorage"
+import { filterUpcomingTours } from "../lib/tourDate"
 import { BusMap } from "./bus/BusMap"
 import { ManualAssignModal } from "../modals/ManualAssignModal"
 import type { Seat, SeatStatus } from "../types/seat.types"
@@ -22,7 +23,8 @@ interface SeatManagementProps {
 // The tour-service stays the source of truth: every mutation re-syncs the
 // store via seatService, and the sidebar counts derive from that state.
 export function SeatManagement({ isLoading = false }: SeatManagementProps) {
-  const tours = useStore((state) => state.tours)
+  const allTours = useStore((state) => state.tours)
+  const tours = useMemo(() => filterUpcomingTours(allTours), [allTours])
 
   const [selectedTourId, setSelectedTourId] = useState("")
   const [selectedBusId, setSelectedBusId] = useState("")
