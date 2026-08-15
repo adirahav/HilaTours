@@ -31,6 +31,8 @@ dns.Resolver.prototype.resolve6 = function patchedResolve6(...args: unknown[]) {
 // import time) so a Render env change takes effect on the next booking
 // without a redeploy.
 export function getBookingNotificationRecipients(): string[] {
+  console.log("ADITEST BOOKING_NOTIFICATION_RECIPIENTS=" + process.env.BOOKING_NOTIFICATION_RECIPIENTS)
+    
   return (process.env.BOOKING_NOTIFICATION_RECIPIENTS || "")
     .split(",")
     .map((addr) => addr.trim())
@@ -41,12 +43,20 @@ let transporter: Transporter | undefined
 
 function getTransporter(): Transporter {
   if (!transporter) {
+    console.log("ADITEST EMAIL_ADDRESS=" + process.env.EMAIL_ADDRESS)
     transporter = nodemailer.createTransport({
       service: "gmail",
       auth: {
         user: process.env.EMAIL_ADDRESS,
         pass: process.env.EMAIL_PASSWORD,
       },
+      // Nodemailer's defaults (~10-20s) may just be too short if the hosting
+      // platform's outbound path to Gmail is slow rather than fully blocked
+      // (ETIMEDOUT looks identical either way from here) — widen the window
+      // before concluding it's unreachable.
+      connectionTimeout: 60000,
+      greetingTimeout: 60000,
+      socketTimeout: 60000,
     })
   }
   return transporter
