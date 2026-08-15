@@ -27,7 +27,16 @@ let transporter: Transporter | undefined
 function getTransporter(): Transporter {
   if (!transporter) {
     transporter = nodemailer.createTransport({
-      service: "gmail",
+      // Explicit host/port instead of the `service: "gmail"` shorthand,
+      // which defaults to port 465 (implicit TLS). That port timed out in
+      // production (works fine locally — same account/credentials, so it's
+      // a network-path issue, not an auth one). Port 587 (STARTTLS) is the
+      // other standard SMTP submission port; trying it in case only 465 is
+      // blocked/unreachable from the hosting platform's outbound network.
+      host: "smtp.gmail.com",
+      port: 587,
+      secure: false,
+      requireTLS: true,
       auth: {
         user: process.env.EMAIL_ADDRESS,
         pass: process.env.EMAIL_PASSWORD,
