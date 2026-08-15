@@ -26,3 +26,9 @@ export async function remove(req: AuthedRequest, res: Response) {
   const tour = await tourService.softDeleteTour(String(req.params.tourId))
   res.status(200).json(tour)
 }
+
+// Backend-only — no frontend route/button calls this today.
+export async function recover(req: AuthedRequest, res: Response) {
+  const tour = await tourService.recoverTour(String(req.params.tourId))
+  res.status(200).json(tour)
+}

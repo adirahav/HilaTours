@@ -96,3 +96,30 @@ export async function softDeleteTour(tourUuid: string) {
   }
   return toClientTour(tour)
 }
+
+// Backend-only (no frontend UI/route calls this): reverses softDeleteTour.
+// Restores the tour, plus every bus and seat that was cascade-deleted in the
+// SAME operation (matched by the exact deletedAt timestamp) — a bus/seat
+// that was already soft-deleted independently *before* this tour was
+// deleted (e.g. via softDeleteBus on its own) is deliberately left deleted,
+// not resurrected as a side effect of recovering the tour.
+export async function recoverTour(tourUuid: string) {
+  const message = "Tour not found or not deleted"
+  const existing = await resolveDoc(Tour, tourUuid, message, { deletedAt: { $ne: null } })
+  const deletedAt = existing.deletedAt
+
+  const tour = await Tour.findOneAndUpdate(
+    { _id: existing._id, deletedAt },
+    { $set: { deletedAt: null } },
+    { returnDocument: "after" },
+  ).lean()
+  if (!tour) throw new HttpError(404, message)
+
+  const buses = await Bus.find({ tourId: existing._id, deletedAt }).select("_id").lean()
+  const busIds = buses.map((b: any) => b._id)
+  if (busIds.length) {
+    await Bus.updateMany({ _id: { $in: busIds }, deletedAt }, { $set: { deletedAt: null } })
+    await Seat.updateMany({ busId: { $in: busIds }, deletedAt }, { $set: { deletedAt: null } })
+  }
+  return toClientTour(tour)
+}

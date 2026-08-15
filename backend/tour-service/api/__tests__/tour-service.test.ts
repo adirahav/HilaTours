@@ -914,6 +914,59 @@ describe("Tour/bus deletion is a soft-delete, excluded from reads", () => {
   })
 })
 
+describe("POST /tour/:tourId/recover (backend-only ops endpoint)", () => {
+  it("restores a soft-deleted tour, its buses, and their seats", async () => {
+    const tour = await makeTour()
+    const bus = await makeBus(tour.id)
+    // Delete the TOUR only — this is what cascades a soft-delete to every
+    // still-active bus (the auto-created default one and `bus`) and their
+    // seats, all stamped with the same deletedAt.
+    await request(app).delete(`${API_BASE}/tour/${tour.id}`).set(auth).expect(200)
+
+    const res = await request(app)
+      .post(`${API_BASE}/tour/${tour.id}/recover`)
+      .set(auth)
+      .expect(200)
+    expect(res.body.deletedAt).toBeNull()
+
+    const getRes = await request(app).get(`${API_BASE}/tour/${tour.id}`).expect(200)
+    expect(getRes.body.id).toBe(tour.id)
+
+    const busesRes = await request(app).get(`${API_BASE}/tour/${tour.id}/buses`).expect(200)
+    const ids = busesRes.body.map((b: any) => b.id)
+    expect(ids).toContain(bus.id) // cascade-deleted with the tour, so it must come back too
+
+    const seats = await getSeats(tour.id, bus.id)
+    expect(seats.length).toBeGreaterThan(0)
+  })
+
+  it("does not resurrect a bus that was soft-deleted independently before the tour was deleted", async () => {
+    const tour = await makeTour()
+    const extraBus = await makeBus(tour.id, { name: "Bus 2" })
+    await request(app)
+      .delete(`${API_BASE}/tour/${tour.id}/buses/${extraBus.id}`)
+      .set(auth)
+      .expect(200)
+    await request(app).delete(`${API_BASE}/tour/${tour.id}`).set(auth).expect(200)
+    await request(app).post(`${API_BASE}/tour/${tour.id}/recover`).set(auth).expect(200)
+
+    const busesRes = await request(app).get(`${API_BASE}/tour/${tour.id}/buses`).expect(200)
+    const ids = busesRes.body.map((b: any) => b.id)
+    expect(ids).not.toContain(extraBus.id)
+  })
+
+  it("recovering a tour that isn't deleted -> 404", async () => {
+    const tour = await makeTour()
+    await request(app).post(`${API_BASE}/tour/${tour.id}/recover`).set(auth).expect(404)
+  })
+
+  it("fails closed without an admin JWT", async () => {
+    const tour = await makeTour()
+    await request(app).delete(`${API_BASE}/tour/${tour.id}`).set(auth).expect(200)
+    await request(app).post(`${API_BASE}/tour/${tour.id}/recover`).expect(401)
+  })
+})
+
 describe("Tour/bus write payloads are whitelisted", () => {
   it("a client cannot set deletedAt via POST or PUT /tour", async () => {
     const created = await request(app)
