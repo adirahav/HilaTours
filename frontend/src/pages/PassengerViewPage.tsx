@@ -202,23 +202,12 @@ export function PassengerViewPage() {
     )
   }
 
-  // A stale/shared link to a tour whose date has already passed: block
-  // everything (seat map, booking form) and offer only a way back home —
-  // never let a passenger submit a booking for a trip that already happened.
-  if (!isUpcomingTourDate(currentTour.date)) {
-    return (
-      <div className="max-w-xl mx-auto text-center py-12 space-y-4">
-        <p className="text-slate-600 font-bold">הטיול כבר הסתיים.</p>
-        <button
-          type="button"
-          onClick={() => navigate('/')}
-          className="px-4 py-2 bg-blue-600 hover:bg-blue-700 text-white rounded-xl font-bold transition focus:outline-none focus-visible:ring-2 focus-visible:ring-blue-500"
-        >
-          חזרה לדף הראשי
-        </button>
-      </div>
-    )
-  }
+  // A stale/shared link to a tour whose date has already passed: the tour
+  // itself (title, date, seat map) still shows so it's clear WHICH tour this
+  // is, but every action is inert — seat clicks, bus switching, and the
+  // booking form are all disabled. Never let a passenger submit a booking
+  // for a trip that already happened.
+  const isTourEnded = !isUpcomingTourDate(currentTour.date)
 
   if (isSuccess) {
     return (
@@ -250,6 +239,15 @@ export function PassengerViewPage() {
 
   return (
     <div className="space-y-6 pb-12">
+      {isTourEnded && (
+        <div
+          role="alert"
+          className="bg-rose-50 text-rose-800 border border-rose-200 rounded-2xl p-4 text-sm font-bold text-center"
+        >
+          הטיול "{currentTour.title}" כבר הסתיים — לא ניתן לבצע פעולות או לשריין מושבים.
+        </div>
+      )}
+
       <div className="bg-white rounded-3xl p-6 shadow-sm border border-slate-200 flex flex-col md:flex-row md:items-center justify-between gap-4">
         <div>
           <button
@@ -282,6 +280,7 @@ export function PassengerViewPage() {
             <select
               id="bus-select"
               value={selectedBusId}
+              disabled={isTourEnded}
               onChange={(e) => {
                 setSelectedBusId(e.target.value)
                 if (currentTour) setStoredBusId(currentTour.id, e.target.value)
@@ -289,7 +288,7 @@ export function PassengerViewPage() {
                 setPickupPoint('')
                 setErrorMsg('')
               }}
-              className="bg-slate-50 border border-slate-300 font-bold text-slate-900 text-xs rounded-xl px-3 py-2 focus:ring-2 focus:ring-blue-500 focus:outline-none"
+              className="bg-slate-50 border border-slate-300 font-bold text-slate-900 text-xs rounded-xl px-3 py-2 focus:ring-2 focus:ring-blue-500 focus:outline-none disabled:opacity-50 disabled:cursor-not-allowed"
             >
               {currentTour.buses.map((b) => (
                 <option key={b.id} value={b.id}>
@@ -313,16 +312,19 @@ export function PassengerViewPage() {
             </span>
           </div>
 
-          <BusMap
-            seats={activeBus?.seats || []}
-            totalSeats={totalSeats}
-            selectedSeatNumbers={selectedSeatNumbers}
-            onToggleSelectSeat={(seatNum) => {
-              setErrorMsg('')
-              toggleSeatSelection(seatNum)
-            }}
-            isAdminMode={false}
-          />
+          <div className={cn(isTourEnded && 'opacity-50 pointer-events-none')} aria-disabled={isTourEnded}>
+            <BusMap
+              seats={activeBus?.seats || []}
+              totalSeats={totalSeats}
+              selectedSeatNumbers={selectedSeatNumbers}
+              onToggleSelectSeat={(seatNum) => {
+                if (isTourEnded) return
+                setErrorMsg('')
+                toggleSeatSelection(seatNum)
+              }}
+              isAdminMode={false}
+            />
+          </div>
         </div>
 
         <div className="lg:col-span-5 bg-white p-6 rounded-3xl shadow-sm border border-slate-200 space-y-6">
@@ -339,7 +341,10 @@ export function PassengerViewPage() {
             </div>
           )}
 
-          <div className="bg-slate-50 p-4 rounded-2xl border border-slate-200 text-xs space-y-2">
+          <div
+            className={cn('bg-slate-50 p-4 rounded-2xl border border-slate-200 text-xs space-y-2', isTourEnded && 'opacity-50 pointer-events-none')}
+            aria-disabled={isTourEnded}
+          >
             <div className="flex items-center justify-between">
               <span className="text-slate-500 font-medium">מושבים שנבחרו:</span>
               {selectedSeatNumbers.length > 0 && (
@@ -419,6 +424,7 @@ export function PassengerViewPage() {
           </div>
 
           <form onSubmit={handleSubmit} className="space-y-4">
+          <fieldset disabled={isTourEnded} className="space-y-4 border-0 p-0 m-0 min-w-0">
             <div>
               <label
                 htmlFor="passenger-name"
@@ -500,16 +506,17 @@ export function PassengerViewPage() {
 
             <button
               type="submit"
-              disabled={!canSubmit || isSubmitting}
+              disabled={!canSubmit || isSubmitting || isTourEnded}
               className={cn(
                 'w-full py-3 font-bold text-sm rounded-2xl transition shadow-md focus:outline-none focus-visible:ring-2 focus-visible:ring-blue-500 focus-visible:ring-offset-2',
-                canSubmit && !isSubmitting
+                canSubmit && !isSubmitting && !isTourEnded
                   ? 'bg-blue-600 hover:bg-blue-700 text-white cursor-pointer'
                   : 'bg-slate-200 text-slate-400 cursor-not-allowed'
               )}
             >
               {isSubmitting ? 'שולח בקשה...' : 'שלח בקשת שריון מושבים'}
             </button>
+          </fieldset>
           </form>
         </div>
       </div>
