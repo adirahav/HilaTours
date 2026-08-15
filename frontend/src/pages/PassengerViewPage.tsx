@@ -18,6 +18,7 @@ import { useSeatSocket } from '../hooks/useSeatSocket'
 import { getStoredBusId, setStoredBusId } from '../lib/busSelectionStorage'
 import { BusMap } from '../components/bus/BusMap'
 import { validateSeatPairing, autoSuggestPairs } from '../lib/busLayoutHelper'
+import { isUpcomingTourDate } from '../lib/tourDate'
 import { cn } from '../lib/utils'
 import type { SeatBookingRequest } from '../types/tour.types'
 
@@ -190,6 +191,24 @@ export function PassengerViewPage() {
     return (
       <div className="max-w-xl mx-auto text-center py-12 space-y-4">
         <p className="text-slate-600 font-bold">הטיול לא נמצא.</p>
+        <button
+          type="button"
+          onClick={() => navigate('/')}
+          className="px-4 py-2 bg-blue-600 hover:bg-blue-700 text-white rounded-xl font-bold transition focus:outline-none focus-visible:ring-2 focus-visible:ring-blue-500"
+        >
+          חזרה לדף הראשי
+        </button>
+      </div>
+    )
+  }
+
+  // A stale/shared link to a tour whose date has already passed: block
+  // everything (seat map, booking form) and offer only a way back home —
+  // never let a passenger submit a booking for a trip that already happened.
+  if (!isUpcomingTourDate(currentTour.date)) {
+    return (
+      <div className="max-w-xl mx-auto text-center py-12 space-y-4">
+        <p className="text-slate-600 font-bold">הטיול כבר הסתיים.</p>
         <button
           type="button"
           onClick={() => navigate('/')}
