@@ -156,7 +156,7 @@ export async function createBus(tourUuid: string, input: BusInput) {
   return toClientBus(bus.toObject(), tourUuid)
 }
 
-const DEFAULT_BUS_SEAT_COUNT = 50
+const DEFAULT_BUS_SEAT_COUNT = 55
 
 /**
  * Auto-created alongside every new tour (see tour.service.createTour) so a

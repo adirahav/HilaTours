@@ -81,13 +81,13 @@ describe("Tour CRUD", () => {
 })
 
 describe("Every tour gets an auto-created, deletion-protected default bus", () => {
-  it("POST /tour also creates one default bus with 50 available seats", async () => {
+  it("POST /tour also creates one default bus with 55 available seats", async () => {
     const tour = await makeTour()
     const res = await request(app).get(`${API_BASE}/tour/${tour.id}/buses`).set(auth).expect(200)
     expect(res.body).toHaveLength(1)
     expect(res.body[0].isDefault).toBe(true)
     const seats = await getSeats(tour.id, res.body[0].id)
-    expect(seats).toHaveLength(50)
+    expect(seats).toHaveLength(55)
     expect(seats.every((s) => s.status === "available")).toBe(true)
   })
 
