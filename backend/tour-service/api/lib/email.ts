@@ -1,7 +1,15 @@
+import { setDefaultResultOrder } from "dns"
 import nodemailer, { type Transporter } from "nodemailer"
 import type Mail from "nodemailer/lib/mailer"
 
 const TAG = "email"
+
+// Render (and many hosts) have no outbound IPv6 route, but Node's DNS can
+// still resolve smtp.gmail.com to an IPv6 address first on some platforms —
+// connecting to it then fails with ENETUNREACH. This reorders the process's
+// default DNS resolution to try IPv4 first (Node 18+), which nodemailer's
+// SMTP transport has no dedicated option to control directly.
+setDefaultResultOrder("ipv4first")
 
 // Comma-separated list in the BOOKING_NOTIFICATION_RECIPIENTS env var, e.g.
 // "hilab2013@gmail.com,adirahav76@gmail.com". Read live (not cached at
