@@ -34,7 +34,8 @@ const userSchema = new Schema<UserDoc>({
   // Public identity. Mongo `_id` stays internal-only (primary key and
   // cross-collection refs such as Tour.createdBy / Seat.assignedBy).
   uuid: { type: String, default: () => randomUUID(), unique: true, index: true },
-  username: { type: String, required: true, unique: true },
+  // Duplicate display names are allowed by design — only email is unique.
+  username: { type: String, required: true },
   email: { type: String, required: true, unique: true },
   passwordHash: { type: String, required: true },
   // Never assigned from client input — see auth.service.signup().

@@ -45,7 +45,9 @@ export async function signup(input: SignupInput): Promise<string> {
 
   const username = deriveUsername(input)
 
-  const existing = await User.findOne({ $or: [{ email }, { username }] })
+  // Only email must be unique — duplicate display names/usernames are fine
+  // (e.g. two accounts both named "הילה בלליס").
+  const existing = await User.findOne({ email })
   if (existing) {
     throw Object.assign(new Error('email already exists'), { status: 400 })
   }
