@@ -1,15 +1,30 @@
-import { setDefaultResultOrder } from "dns"
+import dns from "dns"
 import nodemailer, { type Transporter } from "nodemailer"
 import type Mail from "nodemailer/lib/mailer"
 
 const TAG = "email"
 
-// Render (and many hosts) have no outbound IPv6 route, but Node's DNS can
-// still resolve smtp.gmail.com to an IPv6 address first on some platforms —
-// connecting to it then fails with ENETUNREACH. This reorders the process's
-// default DNS resolution to try IPv4 first (Node 18+), which nodemailer's
-// SMTP transport has no dedicated option to control directly.
-setDefaultResultOrder("ipv4first")
+// Render (and many hosts) have no outbound IPv6 route. `dns.setDefaultResultOrder`
+// does NOT fix this for nodemailer: its SMTP transport (nodemailer/lib/shared)
+// never calls Node's dns.lookup() — it resolves A and AAAA itself via its own
+// `new dns.Resolver()` instance, concatenates both address lists, and then
+// picks *one at random* to connect to (see formatDNSValue in that file). That
+// random pick is exactly why sending "worked sometimes" — it succeeds whenever
+// it happens to roll an IPv4 address and fails with ENETUNREACH on IPv6.
+//
+// There is no supported nodemailer option to disable IPv6 resolution, so this
+// disables it at the source: any dns.Resolver instance's resolve6/resolveAny
+// (which is what `new dns.Resolver()` uses under the hood) now always reports
+// "no AAAA records", so nodemailer's own address pool only ever contains IPv4
+// addresses and the random pick can no longer land on IPv6. This only affects
+// IPv6 *DNS resolution* process-wide — nothing here needs IPv6 for anything.
+const originalResolve6 = dns.Resolver.prototype.resolve6
+dns.Resolver.prototype.resolve6 = function patchedResolve6(...args: unknown[]) {
+  const callback = args[args.length - 1] as (err: NodeJS.ErrnoException | null, addresses?: string[]) => void
+  const err = new Error("queryAaaa ENOTFOUND (IPv6 resolution disabled — see email.ts)") as NodeJS.ErrnoException
+  err.code = "ENOTFOUND"
+  callback(err)
+} as typeof originalResolve6
 
 // Comma-separated list in the BOOKING_NOTIFICATION_RECIPIENTS env var, e.g.
 // "hilab2013@gmail.com,adirahav76@gmail.com". Read live (not cached at
@@ -27,16 +42,7 @@ let transporter: Transporter | undefined
 function getTransporter(): Transporter {
   if (!transporter) {
     transporter = nodemailer.createTransport({
-      // Explicit host/port instead of the `service: "gmail"` shorthand,
-      // which defaults to port 465 (implicit TLS). That port timed out in
-      // production (works fine locally — same account/credentials, so it's
-      // a network-path issue, not an auth one). Port 587 (STARTTLS) is the
-      // other standard SMTP submission port; trying it in case only 465 is
-      // blocked/unreachable from the hosting platform's outbound network.
-      host: "smtp.gmail.com",
-      port: 587,
-      secure: false,
-      requireTLS: true,
+      service: "gmail",
       auth: {
         user: process.env.EMAIL_ADDRESS,
         pass: process.env.EMAIL_PASSWORD,
