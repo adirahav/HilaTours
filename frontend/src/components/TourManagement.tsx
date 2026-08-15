@@ -1,7 +1,14 @@
-﻿import { Plus, Calendar, Edit2, Trash2, Bus as BusIcon, MapPin } from 'lucide-react'
+﻿import { useMemo, useState } from 'react'
+import { Plus, Calendar, Edit2, Trash2, Bus as BusIcon, MapPin, History } from 'lucide-react'
 import type { Tour } from '../types/tour.types'
 import type { Bus } from '../types/bus.types'
 import { cn } from '../lib/utils'
+
+function isPastTour(tour: Tour) {
+  const today = new Date()
+  today.setHours(0, 0, 0, 0)
+  return new Date(tour.date) < today
+}
 
 interface TourManagementProps {
   tours: Tour[]
@@ -28,6 +35,14 @@ export function TourManagement({
   handleOpenEditBus,
   handleDeleteBus
 }: TourManagementProps) {
+  const [showPastTours, setShowPastTours] = useState(false)
+
+  const pastToursCount = useMemo(() => tours.filter(isPastTour).length, [tours])
+  const visibleTours = useMemo(
+    () => (showPastTours ? tours : tours.filter((tour) => !isPastTour(tour))),
+    [tours, showPastTours]
+  )
+
   return (
     <div className="space-y-6" dir="rtl">
       <div className="flex items-center justify-between bg-white p-6 rounded-3xl shadow-sm border border-slate-200">
@@ -36,14 +51,36 @@ export function TourManagement({
           <p className="text-xs text-slate-500">הוספה, עריכה ומחיקת טיולים ואוטובוסים במערכת</p>
         </div>
 
-        <button
-          type="button"
-          onClick={handleOpenAddTour}
-          className="px-4 py-2.5 bg-amber-500 hover:bg-amber-600 text-slate-950 font-bold text-xs sm:text-sm rounded-2xl shadow-md transition flex items-center gap-1.5 focus:outline-none focus-visible:ring-2 focus-visible:ring-amber-600"
-        >
-          <Plus className="w-4 h-4" aria-hidden="true" />
-          <span>הוסף טיול חדש</span>
-        </button>
+        <div className="flex items-center gap-2">
+          {pastToursCount > 0 && (
+            <button
+              type="button"
+              onClick={() => setShowPastTours((prev) => !prev)}
+              className={cn(
+                'px-3 py-2 font-bold text-xs rounded-2xl transition flex items-center gap-1.5 focus:outline-none focus-visible:ring-2 focus-visible:ring-slate-400',
+                showPastTours
+                  ? 'bg-slate-800 text-white hover:bg-slate-900'
+                  : 'bg-slate-100 text-slate-700 hover:bg-slate-200'
+              )}
+            >
+              <History className="w-3.5 h-3.5" aria-hidden="true" />
+              <span>
+                {showPastTours
+                  ? 'הסתר טיולים שעברו'
+                  : `הצג טיולים שעברו (${pastToursCount})`}
+              </span>
+            </button>
+          )}
+
+          <button
+            type="button"
+            onClick={handleOpenAddTour}
+            className="px-4 py-2.5 bg-amber-500 hover:bg-amber-600 text-slate-950 font-bold text-xs sm:text-sm rounded-2xl shadow-md transition flex items-center gap-1.5 focus:outline-none focus-visible:ring-2 focus-visible:ring-amber-600"
+          >
+            <Plus className="w-4 h-4" aria-hidden="true" />
+            <span>הוסף טיול חדש</span>
+          </button>
+        </div>
       </div>
 
       {isLoading && tours.length === 0 ? (
@@ -53,16 +90,23 @@ export function TourManagement({
         >
           טוען טיולים...
         </div>
-      ) : tours.length === 0 ? (
+      ) : visibleTours.length === 0 ? (
         <div className="rounded-3xl border border-slate-200 bg-white p-8 text-center text-slate-500">
-          אין טיולים במערכת. הוסיפו טיול חדש כדי להתחיל.
+          {tours.length === 0
+            ? 'אין טיולים במערכת. הוסיפו טיול חדש כדי להתחיל.'
+            : 'אין טיולים עתידיים. לצפייה בטיולים שעברו השתמשו בכפתור למעלה.'}
         </div>
       ) : (
         <div className="space-y-6">
-          {tours.map((tour) => (
+          {visibleTours.map((tour) => {
+            const isPast = isPastTour(tour)
+            return (
             <div
               key={tour.id}
-              className="bg-white rounded-3xl p-6 shadow-sm border border-slate-200 space-y-4"
+              className={cn(
+                'bg-white rounded-3xl p-6 shadow-sm border space-y-4',
+                isPast ? 'border-slate-200 opacity-70' : 'border-slate-200'
+              )}
             >
               {/* Tour header bar */}
               <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-3 pb-4 border-b border-slate-100">
@@ -73,6 +117,12 @@ export function TourManagement({
                       {(tour.buses || []).length}{' '}
                       {(tour.buses || []).length === 1 ? 'אוטובוס' : 'אוטובוסים'}
                     </span>
+                    {isPast && (
+                      <span className="text-xs bg-slate-100 text-slate-600 px-2.5 py-1 rounded-lg border border-slate-300 font-semibold flex items-center gap-1">
+                        <History className="w-3 h-3" aria-hidden="true" />
+                        מועד הטיול חלף
+                      </span>
+                    )}
                   </div>
                   <p className="text-xs text-slate-500 mt-1 flex items-center gap-1">
                     <Calendar className="w-3.5 h-3.5 text-slate-400" aria-hidden="true" />
@@ -237,7 +287,8 @@ export function TourManagement({
                 )}
               </div>
             </div>
-          ))}
+            )
+          })}
         </div>
       )}
     </div>
