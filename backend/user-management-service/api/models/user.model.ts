@@ -5,6 +5,15 @@ import mongoose, { Schema, Document, Model } from 'mongoose'
 // it's a `User` whose `roles` includes `ROLE_ADMIN`. Self-signup (see
 // auth.service.ts) always assigns `[ROLE_USER]`; admin accounts are the same
 // document shape, just provisioned out-of-band with `roles: ['admin']`.
+// Internal-only audit trail of the most recent successful login — never
+// returned to any client (stripped in toClientUser below, same as
+// passwordHash) and never embedded in the JWT. DB-only, per its purpose.
+export interface LastLogin {
+  at: Date
+  userAgent: string | null
+  ip: string | null
+}
+
 export interface UserDoc extends Document {
   uuid: string
   username: string
@@ -13,6 +22,7 @@ export interface UserDoc extends Document {
   roles: string[]
   createdAt: Date
   deletedAt: Date | null
+  lastLogin: LastLogin | null
 }
 
 // Role names known at launch (see .rule/database-rules.md, Roles & Permissions).
@@ -31,12 +41,25 @@ const userSchema = new Schema<UserDoc>({
   roles: { type: [String], required: true, default: () => [ROLE_USER], index: true },
   createdAt: { type: Date, default: Date.now },
   deletedAt: { type: Date, default: null },
+  // Set on every successful login (auth.service.login) — DB-only, never
+  // returned to a client and never embedded in the JWT payload.
+  lastLogin: {
+    type: new Schema<LastLogin>(
+      {
+        at: { type: Date, required: true },
+        userAgent: { type: String, default: null },
+        ip: { type: String, default: null },
+      },
+      { _id: false }
+    ),
+    default: null,
+  },
 })
 
 // Client-facing projection: expose `uuid` as `id`, never `_id`/`__v`/`passwordHash`.
 export function toClientUser(raw: Record<string, any> | null | undefined) {
   if (!raw) return raw
-  const { _id, __v, uuid, passwordHash, ...rest } = raw
+  const { _id, __v, uuid, passwordHash, lastLogin, ...rest } = raw
   return { id: uuid, ...rest }
 }
 

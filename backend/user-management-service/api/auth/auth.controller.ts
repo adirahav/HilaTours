@@ -12,7 +12,12 @@ export async function signup(req: Request, res: Response) {
 
 export async function login(req: Request, res: Response) {
   try {
-    const token = await authService.login(req.body || {})
+    // DB-only audit metadata (see auth.service.login / UserDoc.lastLogin) —
+    // never included in the response, which is still just the raw token.
+    const token = await authService.login(req.body || {}, {
+      userAgent: req.get('user-agent') ?? null,
+      ip: req.ip ?? null,
+    })
     res.status(200).json(token)
   } catch (err: any) {
     res.status(err.status || 500).json({ error: err.message || 'Server error' })

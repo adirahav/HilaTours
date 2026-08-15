@@ -18,6 +18,13 @@ export interface LoginInput {
   password: string
 }
 
+// Request metadata captured for the DB-only lastLogin audit field — never
+// echoed back to the client and never embedded in the JWT.
+export interface LoginContext {
+  userAgent?: string | null
+  ip?: string | null
+}
+
 function deriveUsername(input: SignupInput): string {
   if (input.fullname && input.fullname.trim()) return input.fullname.trim()
   return input.email.split('@')[0]
@@ -63,7 +70,7 @@ export async function signup(input: SignupInput): Promise<string> {
   })
 }
 
-export async function login(input: LoginInput): Promise<string> {
+export async function login(input: LoginInput, context: LoginContext = {}): Promise<string> {
   const { email, password } = input
   assertCredentialStrings(email, password)
 
@@ -76,6 +83,16 @@ export async function login(input: LoginInput): Promise<string> {
   if (!ok) {
     throw Object.assign(new Error('invalid email or password'), { status: 401 })
   }
+
+  // DB-only audit trail of the most recent successful login — never returned
+  // to the client (stripped in toClientUser) and never embedded in the JWT
+  // below. Best-effort: a failure here must never block the actual login.
+  user.lastLogin = {
+    at: new Date(),
+    userAgent: context.userAgent ?? null,
+    ip: context.ip ?? null,
+  }
+  await user.save().catch(() => undefined)
 
   // `sub` is the public uuid identity — never the Mongo `_id`. The roles are
   // read fresh from the DB at each login, so a promotion/demotion applied
