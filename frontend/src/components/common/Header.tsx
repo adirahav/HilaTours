@@ -29,14 +29,14 @@ const ADMIN_TABS: {
     icon: Calendar,
     desktopLabel: 'ניהול טיולים ואוטובוסים',
     mobileLabel: 'ניהול טיולים'
-  },
+  }/*,
   {
     id: 'report',
     path: '/admin/report',
     icon: FileText,
     desktopLabel: 'דוח נוסעים',
     mobileLabel: 'דוח נוסעים'
-  }
+  }*/
 ]
 
 function getMode(pathname: string): Mode {
