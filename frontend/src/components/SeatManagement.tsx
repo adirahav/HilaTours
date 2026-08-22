@@ -343,6 +343,7 @@ export function SeatManagement({ isLoading = false }: SeatManagementProps) {
         <BusMap
           seats={seats}
           totalSeats={activeBus.totalSeats}
+          grid={activeBus.grid}
           selectedSeatNumbers={[]}
           onToggleSelectSeat={() => {}}
           isAdminMode

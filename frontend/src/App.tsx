@@ -42,6 +42,7 @@ export default function App() {
             <Route index element={<Navigate to="seats" replace />} />
             <Route path="seats" element={null} />
             <Route path="tours" element={null} />
+            <Route path="bus-types" element={null} />
             <Route path="report" element={null} />
           </Route>
           <Route

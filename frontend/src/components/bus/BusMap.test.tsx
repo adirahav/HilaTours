@@ -4,6 +4,7 @@ import userEvent from '@testing-library/user-event'
 import { BusMap } from './BusMap'
 import { generateBusSeats } from '../../lib/busLayoutHelper'
 import type { Seat, SeatStatus } from '../../types/seat.types'
+import type { BusGrid } from '../../types/bus.types'
 
 const toastMock = vi.hoisted(() => ({
   error: vi.fn(),
@@ -152,5 +153,100 @@ describe('BusMap', () => {
     await user.click(screen.getByRole('button', { name: /מושב 1/ }))
     await user.click(screen.getByRole('button', { name: /מושב 2/ }))
     expect(onMove).toHaveBeenCalledWith(1, 2)
+  })
+
+  // The reported bug (2026-08-22): a mini-bus BusType whose back row is
+  // configured with a gap in the middle rendered as packed consecutive seats.
+  // With the live-joined grid supplied, the bench must be laid out by `col`
+  // over the template's declared width, leaving the disabled slot blank.
+  describe('BusType-derived grid', () => {
+    // 4 standard rows + a 4-wide bench (row 5) whose col 3 is disabled, so
+    // the bench holds seats at cols 1, 2 and 4 only.
+    const miniBusGrid: BusGrid = {
+      standardRowsCount: 4,
+      doorRow: null,
+      backRowSeatsCount: 4,
+      disabledSeatSlots: ['5-3']
+    }
+    const benchSeats: Seat[] = [
+      { id: 'b4', seatNumber: 14, row: 5, col: 4, seatStatus: 'available' },
+      { id: 'b2', seatNumber: 15, row: 5, col: 2, seatStatus: 'available' },
+      { id: 'b1', seatNumber: 16, row: 5, col: 1, seatStatus: 'available' }
+    ]
+
+    const renderBench = (grid = miniBusGrid, seats = benchSeats) =>
+      render(
+        <BusMap
+          seats={seats}
+          totalSeats={16}
+          grid={grid}
+          selectedSeatNumbers={[]}
+          onToggleSelectSeat={() => {}}
+        />
+      )
+
+    it('leaves the disabled mid-bench slot empty instead of packing seats together', () => {
+      renderBench()
+      const bench = screen.getByRole('group', { name: 'ספסל אחורי' })
+      const cells = Array.from(bench.children)
+
+      // The bench is as wide as the template says, not the hardcoded 5.
+      expect(cells).toHaveLength(4)
+      // Cols 1, 2 and 4 hold seats; col 3 — the gap — holds nothing.
+      expect(cells[0].querySelector('button')).toHaveAccessibleName(/מושב 16/)
+      expect(cells[1].querySelector('button')).toHaveAccessibleName(/מושב 15/)
+      expect(cells[2].querySelector('button')).toBeNull()
+      expect(cells[3].querySelector('button')).toHaveAccessibleName(/מושב 14/)
+    })
+
+    it('renders bench seats in the bench, never among the standard rows', () => {
+      renderBench()
+      const bench = screen.getByRole('group', { name: 'ספסל אחורי' })
+      benchSeats.forEach((seat) => {
+        expect(bench).toContainElement(
+          screen.getByRole('button', { name: new RegExp('מושב ' + seat.seatNumber + ',') })
+        )
+      })
+    })
+
+    it("puts the door on the template's row, not the fixed fleet's row 8", () => {
+      renderBench({ ...miniBusGrid, doorRow: 3 })
+      const door = screen.getByTitle('דלת אחורית')
+      expect(door).toBeInTheDocument()
+      // Row 3 is the door row, so its right-side seat slots are the doorway.
+      expect(screen.queryByRole('button', { name: /מושב 99/ })).not.toBeInTheDocument()
+    })
+
+    it('renders no door at all when the template declares none', () => {
+      renderBench()
+      expect(screen.queryByTitle('דלת אחורית')).not.toBeInTheDocument()
+    })
+
+    it('still renders a row whose slots are all disabled, preserving the vertical gap', () => {
+      renderBench(miniBusGrid, [
+        { id: 'a', seatNumber: 1, row: 1, col: 4, seatStatus: 'available' },
+        { id: 'b', seatNumber: 2, row: 4, col: 4, seatStatus: 'available' }
+      ])
+      // All 4 declared standard rows exist even though rows 2-3 hold no seats.
+      ;[1, 2, 3, 4].forEach((rowNum) => {
+        expect(screen.getByRole('group', { name: 'שורה ' + rowNum })).toBeInTheDocument()
+      })
+      expect(screen.queryByRole('group', { name: 'שורה 5' })).not.toBeInTheDocument()
+    })
+
+    // Regression guard: a manually-configured bus (no template) must render
+    // exactly as it did before this fix.
+    it('keeps the fixed 5-wide bench and row-8 door for a bus with no template', () => {
+      render(
+        <BusMap
+          seats={generateBusSeats(55)}
+          totalSeats={55}
+          selectedSeatNumbers={[]}
+          onToggleSelectSeat={() => {}}
+        />
+      )
+      expect(screen.getByRole('group', { name: 'ספסל אחורי' }).children).toHaveLength(5)
+      expect(screen.getByTitle('דלת אחורית')).toBeInTheDocument()
+    })
   })
 })

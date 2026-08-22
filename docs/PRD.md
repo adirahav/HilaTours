@@ -48,6 +48,7 @@ Tabbed workspace:
 - **Tab 2 — Tour & Bus Management:**
   - **Tour management:** create, edit, and (soft-)delete tours (title, date, notes, active/archived status).
   - **Bus management:** create/edit buses — bus name, total seat count, door position (front/middle/back), driver side (left/right), and manage the pickup-point list (add/remove/reorder).
+- **Bus type management:** admin defines and reuses **bus type templates** (grid of standard rows, door-row position, back-row seat count, individually disabled/blocked seat slots), independent of any specific tour. A new bus can be instantiated from a saved template instead of configuring its layout from scratch. Admin can add, duplicate, reset-to-preset, and delete templates; one template can be marked default. Design source: `raw_from_ai_studio/src/components/BusTypeManagement.tsx`.
 
 - **Tab 3 — Passenger Manifest Report:**
   - Consolidated table of all passengers and seats for the selected bus.
@@ -72,6 +73,7 @@ Tabbed workspace:
 | F8  | Admin creates, edits, and soft-deletes tours. | `POST` / `PUT` / `DELETE /api/tour/:tourId` (`tour-service`) |
 | F9  | Admin creates, edits, and soft-deletes buses (seat count, door/driver config, pickup points). | `POST` / `PUT` / `DELETE /api/tour/:tourId/buses/:busId` (`tour-service`) |
 | F10 | Generate the manifest report (search, filter, copy-to-clipboard). | `GET /api/tour/:tourId/buses/:busId/manifest` (`tour-service`) + frontend reporting/client-state logic |
+| F11 | Admin creates, edits, duplicates, and (soft-)deletes reusable bus-type templates (grid rows, door-row position, back-row seat count, disabled seat slots). A bus can be instantiated from a template, converting it into a concrete `seatLayout`. `seatLayout` and `busTypeId` are mutually exclusive on bus creation — supplying both (or neither) is rejected with 400. | `GET`/`POST`/`PUT`/`DELETE /api/busType/:busTypeId`, `POST /api/tour/:tourId/buses` (accepts `seatLayout` XOR `busTypeId`) (`tour-service`) |
 
 ---
 

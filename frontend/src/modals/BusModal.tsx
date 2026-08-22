@@ -11,6 +11,7 @@ import {
   ArrowDown
 } from 'lucide-react'
 import type { Bus, DriverSide, DoorPosition } from '../types/bus.types'
+import { useStore } from '../store/store'
 import { cn } from '../lib/utils'
 
 interface BusModalProps {
@@ -22,14 +23,14 @@ interface BusModalProps {
     pickupPoints: string[],
     totalSeats: number,
     driverSide: DriverSide,
-    doorPosition: DoorPosition
+    doorPosition: DoorPosition,
+    // F11: when a bus type template is chosen, the server generates the
+    // seatLayout from it. Null means "use the manual seat count" — the two are
+    // mutually exclusive on the API, so exactly one of them is ever sent.
+    busTypeId?: string | null
   ) => void
   busToEdit?: Bus | null
 }
-
-// The fleet only has two physical bus sizes — not a free-form range.
-const BUS_SIZES = [55, 59] as const
-const DEFAULT_SEATS = BUS_SIZES[0]
 
 // Every bus in the fleet has the same fixed door layout — a front door at
 // the driver's side plus a back door at row 8 (see BusMap.tsx) — so neither
@@ -43,12 +44,19 @@ export function BusModal({ isOpen, onClose, onSave, busToEdit }: BusModalProps) 
   const [description, setDescription] = useState('')
   const [pickupPoints, setPickupPoints] = useState<string[]>([])
   const [newPickup, setNewPickup] = useState('')
-  const [totalSeats, setTotalSeats] = useState<number>(DEFAULT_SEATS)
+  const [busTypeId, setBusTypeId] = useState<string | null>(null)
   const [draggedIndex, setDraggedIndex] = useState<number | null>(null)
   const [dragOverIndex, setDragOverIndex] = useState<number | null>(null)
   const [nameError, setNameError] = useState('')
   const [pickupError, setPickupError] = useState('')
   const [seatsError, setSeatsError] = useState('')
+  const [initialBusTypeId, setInitialBusTypeId] = useState<string | null>(null)
+  const [showChangeConfirm, setShowChangeConfirm] = useState(false)
+
+  // Templates are loaded into the store by the admin dashboard. Bus size is
+  // always chosen from this list — there is no manual/free-form seat count.
+  const busTypes = useStore((state) => state.busTypes)
+  const selectedBusType = busTypes.find((t) => t.id === busTypeId) ?? null
 
   const titleId = useId()
   const nameErrorId = useId()
@@ -57,12 +65,20 @@ export function BusModal({ isOpen, onClose, onSave, busToEdit }: BusModalProps) 
   const dialogRef = useRef<HTMLDivElement>(null)
   const nameInputRef = useRef<HTMLInputElement>(null)
 
-  // Q6: reducing totalSeats below the highest occupied seat number is blocked
-  // — so a bus size smaller than that is not a selectable option at all.
-  const minSeats = useMemo(() => {
-    const occupied = busToEdit?.seats?.filter((s) => s.seatStatus !== 'available') ?? []
-    return occupied.reduce((max, s) => Math.max(max, s.seatNumber), 0)
-  }, [busToEdit])
+  // Product decision (2026-08-22): changing the bus type on an existing bus
+  // is always allowed, even when seats are already occupied/booked. The
+  // backend reseeds by position — seats whose position exists in both the
+  // old and new layout keep their occupant untouched; only seats at
+  // positions absent from the new layout (e.g. a smaller template, or a
+  // door-row shift) lose their assignment. No size restriction is applied.
+  // The warning is a confirmation MODAL shown only at save time, and only
+  // when the admin actually changed the bus type away from what the bus
+  // already had — not an always-visible inline banner.
+  const hasOccupiedSeats = useMemo(
+    () => (busToEdit?.seats ?? []).some((s) => s.seatStatus !== 'available'),
+    [busToEdit]
+  )
+  const busTypeChanged = !!busToEdit && busTypeId !== initialBusTypeId
 
   useEffect(() => {
     if (!isOpen) return
@@ -70,18 +86,26 @@ export function BusModal({ isOpen, onClose, onSave, busToEdit }: BusModalProps) 
       setBusName(busToEdit.busName)
       setDescription(busToEdit.description || '')
       setPickupPoints([...busToEdit.pickupPoints])
-      setTotalSeats(busToEdit.totalSeats || DEFAULT_SEATS)
+      // No link is kept between a bus and the template it was created from
+      // (see plan 034, Open Question 2) — preselect the template whose seat
+      // count matches, if any, else leave it for the admin to pick.
+      const matched = busTypes.find((t) => t.totalSeats === busToEdit.totalSeats)?.id ?? null
+      setBusTypeId(matched)
+      setInitialBusTypeId(matched)
     } else {
       setBusName('')
       setDescription('')
       setPickupPoints([])
-      setTotalSeats(DEFAULT_SEATS)
+      // Preselect the template marked as default, if one exists.
+      setBusTypeId(busTypes.find((t) => t.isDefault)?.id ?? null)
+      setInitialBusTypeId(null)
     }
     setNewPickup('')
     setNameError('')
     setPickupError('')
     setSeatsError('')
-  }, [busToEdit, isOpen, minSeats])
+    setShowChangeConfirm(false)
+  }, [busToEdit, isOpen, busTypes])
 
   // Initial focus on the name input when opened.
   useEffect(() => {
@@ -168,6 +192,19 @@ export function BusModal({ isOpen, onClose, onSave, busToEdit }: BusModalProps) 
     setDragOverIndex(null)
   }
 
+  const commitSave = () => {
+    onSave(
+      busName.trim(),
+      description.trim(),
+      pickupPoints,
+      selectedBusType!.totalSeats,
+      DRIVER_SIDE,
+      DOOR_POSITION,
+      selectedBusType!.id
+    )
+    onClose()
+  }
+
   const handleSubmit = (e: React.FormEvent) => {
     e.preventDefault()
     setNameError('')
@@ -179,14 +216,22 @@ export function BusModal({ isOpen, onClose, onSave, busToEdit }: BusModalProps) 
       setNameError('יש להזין שם/מזהה לאוטובוס')
       hasError = true
     }
-    // Q6: block reducing the seat count below already-occupied seat numbers.
-    if (totalSeats < minSeats) {
-      setSeatsError(`לא ניתן להפחית את מספר המושבים מתחת ל-${minSeats} (קיימים מושבים תפוסים)`)
+    if (!selectedBusType) {
+      setSeatsError('יש לבחור דגם אוטובוס')
       hasError = true
     }
     if (hasError) return
-    onSave(trimmedName, description.trim(), pickupPoints, totalSeats, DRIVER_SIDE, DOOR_POSITION)
-    onClose()
+
+    // Confirmation guard: only when actually changing the bus type on an
+    // existing bus that has occupied seats — shown as a confirm modal at
+    // save time, not an always-visible inline banner. The backend reseeds
+    // by position (seats whose position exists in both layouts keep their
+    // occupant; only positions absent from the new layout lose theirs).
+    if (busTypeChanged && hasOccupiedSeats) {
+      setShowChangeConfirm(true)
+      return
+    }
+    commitSave()
   }
 
   const inputClass =
@@ -277,45 +322,45 @@ export function BusModal({ isOpen, onClose, onSave, busToEdit }: BusModalProps) 
           </div>
 
           <div>
-            <div className="flex items-center justify-between mb-1">
-              <span id={`${titleId}-seats-label`} className="block text-xs font-bold text-slate-700">
-                גודל האוטובוס:
-              </span>
-            </div>
-
-            <div
-              role="radiogroup"
-              aria-labelledby={`${titleId}-seats-label`}
-              aria-describedby={seatsError ? seatsErrorId : undefined}
-              className="grid grid-cols-2 gap-2"
+            <label
+              htmlFor={`${titleId}-bus-type`}
+              className="block text-xs font-bold text-slate-700 mb-1"
             >
-              {BUS_SIZES.map((size) => {
-                const disabled = size < minSeats
-                const selected = totalSeats === size
-                return (
-                  <button
-                    key={size}
-                    type="button"
-                    role="radio"
-                    aria-checked={selected}
-                    disabled={disabled}
-                    onClick={() => {
-                      setTotalSeats(size)
-                      if (seatsError) setSeatsError('')
-                    }}
-                    className={cn(
-                      'py-2.5 rounded-xl border-2 text-sm font-extrabold transition focus:outline-none focus-visible:ring-2 focus-visible:ring-blue-500',
-                      selected
-                        ? 'bg-blue-600 text-white border-blue-700 shadow-md'
-                        : 'bg-slate-50 text-slate-700 border-slate-300 hover:bg-slate-100',
-                      disabled && 'opacity-40 cursor-not-allowed hover:bg-slate-50'
-                    )}
-                  >
-                    {size} מושבים
-                  </button>
-                )
-              })}
-            </div>
+              דגם אוטובוס (גודל וגריד המושבים):
+            </label>
+            {busTypes.length === 0 ? (
+              <p className="text-[11px] font-semibold text-rose-600">
+                אין דגמי אוטובוס מוגדרים במערכת — יש להגדיר דגם תחילה בניהול דגמי אוטובוס.
+              </p>
+            ) : (
+              <>
+                <select
+                  id={`${titleId}-bus-type`}
+                  value={busTypeId ?? ''}
+                  aria-invalid={!!seatsError}
+                  aria-describedby={seatsError ? seatsErrorId : undefined}
+                  onChange={(e) => {
+                    setBusTypeId(e.target.value || null)
+                    setSeatsError('')
+                  }}
+                  className={cn(inputClass, seatsError && 'border-rose-400 focus:ring-rose-500')}
+                >
+                  <option value="">בחר דגם אוטובוס...</option>
+                  {busTypes.map((busType) => (
+                    <option key={busType.id} value={busType.id}>
+                      {busType.name} ({busType.totalSeats} מושבים)
+                    </option>
+                  ))}
+                </select>
+                {selectedBusType && (
+                  <p className="text-[11px] text-slate-500 mt-1">
+                    מפת המושבים תיווצר לפי הדגם: {selectedBusType.totalSeats} מושבים,{' '}
+                    {selectedBusType.standardRowsCount} שורות
+                    {selectedBusType.doorRow ? `, דלת בשורה ${selectedBusType.doorRow}` : ', ללא דלת אמצעית'}.
+                  </p>
+                )}
+              </>
+            )}
             {seatsError && (
               <p
                 id={seatsErrorId}
@@ -332,9 +377,6 @@ export function BusModal({ isOpen, onClose, onSave, busToEdit }: BusModalProps) 
               <label htmlFor={`${titleId}-pickup`} className="block text-xs font-bold text-slate-700">
                 נקודות איסוף:
               </label>
-              <span className="text-[11px] text-blue-600 font-medium">
-                לחץ וגורר לשינוי סדר האיסוף
-              </span>
             </div>
 
             <div className="flex gap-2 mb-2">
@@ -468,6 +510,59 @@ export function BusModal({ isOpen, onClose, onSave, busToEdit }: BusModalProps) 
           </div>
         </form>
       </div>
+
+      {showChangeConfirm && (
+        <div
+          className="fixed inset-0 z-[60] bg-slate-900/70 flex items-center justify-center p-4"
+          onMouseDown={(e) => {
+            if (e.target === e.currentTarget) setShowChangeConfirm(false)
+          }}
+        >
+          <div
+            role="alertdialog"
+            aria-modal="true"
+            aria-labelledby={`${titleId}-confirm-title`}
+            dir="rtl"
+            className="bg-white rounded-3xl max-w-sm w-full p-6 shadow-2xl border border-amber-300"
+          >
+            <div className="flex items-start gap-3 mb-4">
+              <div className="w-9 h-9 rounded-full bg-amber-100 text-amber-700 flex items-center justify-center shrink-0">
+                <AlertCircle className="w-5 h-5" aria-hidden="true" />
+              </div>
+              <div>
+                <h4 id={`${titleId}-confirm-title`} className="text-sm font-bold text-slate-900">
+                  לאשר שינוי דגם אוטובוס?
+                </h4>
+                <p className="text-xs text-slate-600 mt-2 leading-relaxed">
+                  שינוי הדגם יעדכן את מפת המושבים: נוסעים במושבים שקיימים גם בדגם החדש{' '}
+                  <b>ישמרו את השיוך שלהם</b>, אך <b>מושבים שלא קיימים בדגם החדש</b> (למשל אם הדגם קטן
+                  יותר, או שמיקום הדלת שונה) <b>יאבדו את שיוך הנוסע</b>. פעולה זו אינה הפיכה עבור
+                  המושבים שנעלמים.
+                </p>
+              </div>
+            </div>
+            <div className="flex items-center gap-3">
+              <button
+                type="button"
+                onClick={() => setShowChangeConfirm(false)}
+                className="w-1/2 py-2.5 bg-slate-100 text-slate-700 font-semibold rounded-2xl hover:bg-slate-200 text-sm transition focus:outline-none focus:ring-2 focus:ring-slate-400"
+              >
+                ביטול
+              </button>
+              <button
+                type="button"
+                onClick={() => {
+                  setShowChangeConfirm(false)
+                  commitSave()
+                }}
+                className="w-1/2 py-2.5 bg-amber-600 text-white font-bold rounded-2xl shadow-md transition text-sm hover:bg-amber-700 focus:outline-none focus:ring-2 focus:ring-amber-700"
+              >
+                אשר ושמור
+              </button>
+            </div>
+          </div>
+        </div>
+      )}
     </div>
   )
 }

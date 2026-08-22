@@ -230,7 +230,7 @@ export function PassengerViewPage() {
             onClick={() => navigate('/')}
             className="px-6 py-2.5 bg-slate-900 text-white font-bold rounded-2xl hover:bg-slate-800 transition focus:outline-none focus-visible:ring-2 focus-visible:ring-blue-500"
           >
-            חזרה לדף ראשי
+            חזרה
           </button>
         </div>
       </div>
@@ -255,8 +255,7 @@ export function PassengerViewPage() {
             onClick={() => navigate('/')}
             className="text-xs font-bold text-slate-500 hover:text-slate-800 flex items-center gap-1 mb-2 focus:outline-none focus-visible:ring-2 focus-visible:ring-blue-500 rounded"
           >
-            <ArrowRight className="w-4 h-4 rotate-180" aria-hidden="true" />
-            <span>חזרה לרשימת הטיולים</span>
+            <ArrowRight className="w-4 h-4" aria-hidden="true" />
           </button>
           <h2 className="text-xl font-bold text-slate-900">{currentTour.title}</h2>
           <p className="text-xs text-slate-500 mt-1 flex items-center gap-3">
@@ -316,6 +315,7 @@ export function PassengerViewPage() {
             <BusMap
               seats={activeBus?.seats || []}
               totalSeats={totalSeats}
+              grid={activeBus?.grid ?? null}
               selectedSeatNumbers={selectedSeatNumbers}
               onToggleSelectSeat={(seatNum) => {
                 if (isTourEnded) return

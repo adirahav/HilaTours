@@ -26,6 +26,8 @@ const buildTour = (): Tour => ({
       pickupPoints: [],
       driverSide: 'left',
       doorPosition: 'front',
+      busTypeId: null,
+      grid: null,
       isDefault: false,
       totalSeats: 52,
       seats: [buildSeat(1, 'available'), buildSeat(2, 'available')]

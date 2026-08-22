@@ -62,7 +62,7 @@ describe('Header', () => {
 
     expect(screen.getByText(/טיול לים/)).toBeInTheDocument()
     expect(
-      screen.getByRole('link', { name: /חזרה לדף ראשי/ })
+      screen.getByRole('link', { name: /חזרה/ })
     ).toBeInTheDocument()
   })
 
@@ -148,7 +148,7 @@ describe('Header', () => {
   it('does not render the back-to-gateway control outside passenger mode', () => {
     renderAt('/')
     expect(
-      screen.queryByRole('link', { name: /חזרה לדף ראשי/ })
+      screen.queryByRole('link', { name: /חזרה/ })
     ).not.toBeInTheDocument()
   })
 
@@ -169,7 +169,9 @@ describe('Header', () => {
     const logout = screen.getByRole('button', { name: 'התנתק ממערכת הניהול' })
     expect(logout.className).toContain('focus-visible:ring-2')
 
-    const tabs = screen.getAllByRole('link', { name: /דוח נוסעים/ })
+    // The "דוח נוסעים" tab is currently commented out in ADMIN_TABS; the
+    // bus-types tab is the last enabled one, in both the desktop and mobile nav.
+    const tabs = screen.getAllByRole('link', { name: /דגמי אוטובוס/ })
     expect(tabs.every(t => t.className.includes('focus-visible:ring-2'))).toBe(true)
   })
 

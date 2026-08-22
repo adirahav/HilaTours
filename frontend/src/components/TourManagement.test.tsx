@@ -28,6 +28,8 @@ const buildTour = (): Tour => ({
       pickupPoints: ['תל אביב', 'חיפה'],
       driverSide: 'left',
       doorPosition: 'front',
+      busTypeId: null,
+      grid: null,
       isDefault: true,
       totalSeats: 52,
       seats: [
@@ -45,6 +47,8 @@ const buildTour = (): Tour => ({
       pickupPoints: ['נתניה'],
       driverSide: 'left',
       doorPosition: 'front',
+      busTypeId: null,
+      grid: null,
       isDefault: false,
       totalSeats: 50,
       seats: []

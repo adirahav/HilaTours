@@ -83,6 +83,40 @@ describe('busService.save', () => {
   })
 })
 
+describe('busService.save with a bus type template (F11)', () => {
+  beforeEach(() => vi.clearAllMocks())
+
+  it('sends busTypeId instead of seatLayout — the two are mutually exclusive', async () => {
+    postMock.mockResolvedValueOnce(rawResponse)
+
+    await busService.save('t1', busForm, 'bt1')
+
+    const [, , payload] = postMock.mock.calls[0]
+    expect(payload).toMatchObject({ name: 'אוטובוס 1', busTypeId: 'bt1' })
+    expect(payload).not.toHaveProperty('seatLayout')
+  })
+
+  it('falls back to an explicit seatLayout when no template is chosen', async () => {
+    postMock.mockResolvedValueOnce(rawResponse)
+
+    await busService.save('t1', busForm, null)
+
+    const [, , payload] = postMock.mock.calls[0]
+    expect(payload).toHaveProperty('seatLayout')
+    expect(payload).not.toHaveProperty('busTypeId')
+  })
+
+  it('never sends busTypeId when updating an existing bus — layouts are not remapped', async () => {
+    putMock.mockResolvedValueOnce(rawResponse)
+
+    await busService.save('t1', { ...busForm, id: 'bus1' }, 'bt1')
+
+    const [, , payload] = putMock.mock.calls[0]
+    expect(payload).not.toHaveProperty('busTypeId')
+    expect(payload).toHaveProperty('seatLayout')
+  })
+})
+
 describe('busService.loadWithPii', () => {
   beforeEach(() => vi.clearAllMocks())
 
@@ -101,6 +135,8 @@ describe('busService.loadWithPii', () => {
         pickupPoints: [],
         driverSide: 'left',
         doorPosition: 'front',
+        busTypeId: null,
+        grid: null,
         isDefault: false,
         totalSeats: 1,
         seats: [{ id: 'seat1', seatNumber: 1, row: 1, col: 1, seatStatus: 'available' }]

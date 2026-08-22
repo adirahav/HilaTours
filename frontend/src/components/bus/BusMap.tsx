@@ -1,5 +1,6 @@
 import { useEffect, useRef, useState } from 'react'
 import type { Seat } from '../../types/seat.types'
+import type { BusGrid } from '../../types/bus.types'
 import { toast } from 'sonner'
 import {
   Check,
@@ -16,9 +17,29 @@ import { BACK_DOOR_ROW, BACK_ROW_SEAT_COUNT } from '../../lib/busLayoutHelper'
 
 const LONG_PRESS_MS = 500
 
+// Back-bench widths a template may declare. Tailwind can't see a runtime
+// `grid-cols-${n}`, so the classes are enumerated here (all are in the
+// generated CSS because they appear as literals).
+const BACK_ROW_GRID_COLS: Record<number, string> = {
+  1: 'grid-cols-1',
+  2: 'grid-cols-2',
+  3: 'grid-cols-3',
+  4: 'grid-cols-4',
+  5: 'grid-cols-5',
+  6: 'grid-cols-6',
+  7: 'grid-cols-7',
+  8: 'grid-cols-8'
+}
+
 interface BusMapProps {
   seats: Seat[]
   totalSeats: number
+  // The bus's live BusType grid, when it was built from a template. Drives
+  // the row count, the door row, and the back-bench width — so a gap the
+  // admin configured (a disabled slot mid-row) renders as blank space rather
+  // than being packed away. Null/absent = a manually-configured bus, which
+  // keeps rendering against the fixed fleet layout in busLayoutHelper.ts.
+  grid?: BusGrid | null
   selectedSeatNumbers: number[]
   onToggleSelectSeat: (seatNumber: number) => void
   isAdminMode?: boolean
@@ -46,6 +67,7 @@ const STATUS_LABEL: Record<Seat['seatStatus'], string> = {
 export function BusMap({
   seats,
   totalSeats,
+  grid = null,
   selectedSeatNumbers,
   onToggleSelectSeat,
   isAdminMode = false,
@@ -76,9 +98,17 @@ export function BusMap({
   }, [quickMenuSeatNumber])
 
   const safeSeats = seats || []
+
+  // Which seats belong to the back bench vs. the standard rows. For a
+  // template-derived bus this is a row-index question (the template says
+  // where the bench starts); for a manual bus it stays the seat-number split
+  // the fixed fleet layout has always used.
   const standardLimit = totalSeats - BACK_ROW_SEAT_COUNT
-  const standardSeats = safeSeats.filter((s) => s.seatNumber <= standardLimit)
-  const backRowSeats = safeSeats.filter((s) => s.seatNumber > standardLimit)
+  const isBackRowSeat = (s: Seat) =>
+    grid ? s.row > grid.standardRowsCount : s.seatNumber > standardLimit
+
+  const standardSeats = safeSeats.filter((s) => !isBackRowSeat(s))
+  const backRowSeats = safeSeats.filter(isBackRowSeat)
 
   const rowMap = new Map<number, Seat[]>()
   standardSeats.forEach((s) => {
@@ -86,7 +116,19 @@ export function BusMap({
     rowMap.get(s.row)!.push(s)
   })
 
-  const rowNumbers = Array.from(rowMap.keys()).sort((a, b) => a - b)
+  // With a template grid, render every declared row — including one whose
+  // slots are all disabled — so vertical gaps survive too. Without one, only
+  // rows that actually contain seats exist.
+  const rowNumbers = grid
+    ? Array.from({ length: grid.standardRowsCount }, (_, i) => i + 1)
+    : Array.from(rowMap.keys()).sort((a, b) => a - b)
+
+  // The door row is the template's when there is one; otherwise the fixed
+  // fleet's back door at row 8. A template may declare no door at all.
+  const doorRowNumber = grid ? grid.doorRow : BACK_DOOR_ROW
+
+  const backRowColumnCount = grid ? grid.backRowSeatsCount : BACK_ROW_SEAT_COUNT
+  const backRowColumns = Array.from({ length: Math.max(0, backRowColumnCount) }, (_, i) => i + 1)
 
   const getSeatStyle = (seat: Seat) => {
     const isSelected = selectedSeatNumbers.includes(seat.seatNumber)
@@ -333,8 +375,13 @@ export function BusMap({
 
         <div
           className="grid grid-cols-5 gap-2 sm:gap-3 mb-2 text-center text-xs font-semibold text-slate-500 px-1"
-          dir="rtl"
         >
+          {/* Column order must match the seat grid below, which renders
+              col1..col4 left-to-right under the wrapper's dir="ltr" (line
+              ~335) — this row previously forced dir="rtl" here only, which
+              visually reversed these labels relative to the seat cells
+              beneath them (admin-reported bug, 2026-08-22). No dir means it
+              inherits ltr from the wrapper, matching the seats exactly. */}
           <div>שמאל (חלון)</div>
           <div>שמאל (מעבר)</div>
           <div className="text-slate-400 font-normal">מעבר</div>
@@ -350,11 +397,13 @@ export function BusMap({
             const col3 = rowSeats.find((s) => s.col === 3)
             const col4 = rowSeats.find((s) => s.col === 4)
 
-            const isBackDoorRow = rowNum === BACK_DOOR_ROW
+            const isBackDoorRow = doorRowNumber !== null && rowNum === doorRowNumber
 
             return (
               <div
                 key={'row-' + rowNum}
+                role="group"
+                aria-label={'שורה ' + rowNum}
                 className={cn(
                   'grid grid-cols-5 gap-2 sm:gap-3 items-center',
                   isBackDoorRow && 'py-1'
@@ -388,20 +437,32 @@ export function BusMap({
           })}
         </div>
 
-        <div className="mt-6 pt-4 border-t-2 border-slate-300">
-          <div className="grid grid-cols-5 gap-2 sm:gap-3">
-            {/* Always exactly 5 — the 2 seats the back door displaces from
-                BACK_DOOR_ROW get their own compensation row instead (see
-                busLayoutHelper.ts), so the bench itself never grows.
-                Positioned by `col` (not array/seatNumber order) so the back
-                row's right-to-left numbering renders in the same visual
-                direction as every standard row. */}
-            {[1, 2, 3, 4, 5].map((col) => {
-              const seat = backRowSeats.find((s) => s.col === col)
-              return <div key={'back-col-' + col}>{seat && renderSeat(seat)}</div>
-            })}
+        {backRowColumns.length > 0 && (
+          <div className="mt-6 pt-4 border-t-2 border-slate-300">
+            {/* Bench width comes from the template when there is one, and is
+                otherwise the fixed fleet's 5 (the 2 seats the back door
+                displaces from BACK_DOOR_ROW get their own compensation row
+                instead — see busLayoutHelper.ts — so that bench never grows).
+                Slots are positioned by `col`, not by array/seatNumber order,
+                so the right-to-left numbering renders in the same visual
+                direction as every standard row AND a disabled slot in the
+                middle of the bench stays an empty cell rather than being
+                packed out by its neighbours. */}
+            <div
+              role="group"
+              aria-label="ספסל אחורי"
+              className={cn(
+                'grid gap-2 sm:gap-3',
+                BACK_ROW_GRID_COLS[backRowColumns.length] ?? 'grid-cols-5'
+              )}
+            >
+              {backRowColumns.map((col) => {
+                const seat = backRowSeats.find((s) => s.col === col)
+                return <div key={'back-col-' + col}>{seat && renderSeat(seat)}</div>
+              })}
+            </div>
           </div>
-        </div>
+        )}
 
         
       </div>

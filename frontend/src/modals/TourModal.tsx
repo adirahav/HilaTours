@@ -14,6 +14,27 @@ function todayIso(): string {
   return new Date().toISOString().split('T')[0]
 }
 
+// `<input type="date">` requires its value in exactly "yyyy-mm-dd" — the
+// server returns a full ISO datetime (e.g. "2026-08-25T00:00:00.000Z"),
+// which the input silently rejects (renders empty, no error) rather than
+// truncating it itself.
+function toDateInputValue(isoDate: string): string {
+  return isoDate.slice(0, 10)
+}
+
+// The `lang` attribute on `<input type="date">` is not a reliable way to
+// force dd/mm/yyyy display — Chromium mostly follows the OS/browser locale
+// regardless. So the native input's own text is hidden (`text-transparent`)
+// and this formats the same "yyyy-mm-dd" value as the Israeli convention
+// (unpadded d/m/yyyy) for a custom overlay on top of it — the native input
+// stays fully functional (typing, the calendar picker), only its own text
+// rendering is invisible.
+function formatIsraeliDate(isoDate: string): string {
+  const [y, m, d] = isoDate.split('-').map(Number)
+  if (!y || !m || !d) return ''
+  return `${d}/${m}/${y}`
+}
+
 export function TourModal({ isOpen, onClose, onSave, tourToEdit }: TourModalProps) {
   const [title, setTitle] = useState('')
   const [date, setDate] = useState('')
@@ -31,7 +52,7 @@ export function TourModal({ isOpen, onClose, onSave, tourToEdit }: TourModalProp
     if (!isOpen) return
     if (tourToEdit) {
       setTitle(tourToEdit.title)
-      setDate(tourToEdit.date)
+      setDate(toDateInputValue(tourToEdit.date))
       setDescription(tourToEdit.description || '')
     } else {
       setTitle('')
@@ -180,7 +201,17 @@ export function TourModal({ isOpen, onClose, onSave, tourToEdit }: TourModalProp
               תאריך יציאה (חובה):
             </label>
             <div className="relative">
-              <Calendar className="w-4 h-4 text-slate-400 absolute right-3 top-3 pointer-events-none" />
+              <Calendar className="w-4 h-4 text-slate-400 absolute left-3 top-3 pointer-events-none" />
+              {/* Purely visual — mirrors the native input's value in the
+                  Israeli dd/mm/yyyy convention. The native input beneath it
+                  is still what's focused/edited/submitted; only its own
+                  text rendering is hidden (text-transparent below). */}
+              <div
+                aria-hidden="true"
+                className="absolute inset-0 flex items-center pl-10 pr-4 text-sm text-slate-900 pointer-events-none"
+              >
+                {formatIsraeliDate(date)}
+              </div>
               <input
                 id={`${titleId}-date`}
                 type="date"
@@ -193,7 +224,14 @@ export function TourModal({ isOpen, onClose, onSave, tourToEdit }: TourModalProp
                 }}
                 className={cn(
                   inputClass,
-                  'pr-10 pl-4',
+                  // The lucide Calendar icon above is the only visible icon —
+                  // the browser's own picker-indicator is stretched over the
+                  // whole field and made invisible, so clicking anywhere
+                  // (not just a tiny native icon on the right) still opens
+                  // the picker, and it never visually doubles up with the
+                  // custom icon.
+                  'pl-10 pr-4 text-transparent',
+                  '[&::-webkit-calendar-picker-indicator]:absolute [&::-webkit-calendar-picker-indicator]:inset-0 [&::-webkit-calendar-picker-indicator]:h-full [&::-webkit-calendar-picker-indicator]:w-full [&::-webkit-calendar-picker-indicator]:m-0 [&::-webkit-calendar-picker-indicator]:opacity-0 [&::-webkit-calendar-picker-indicator]:cursor-pointer',
                   dateError && 'border-rose-400 focus:ring-rose-500'
                 )}
               />

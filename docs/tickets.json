@@ -1,32 +1,32 @@
 {
   "frontend": {
-    "id": "AGE-300",
-    "issueId": "64784317-1c46-468b-b8c7-a2247177fb02",
-    "url": "https://linear.app/agents-example/issue/AGE-300/fe-prepare-the-project-for-production-deploy-add-a-new-stateless"
+    "id": "AGE-318",
+    "issueId": "e964b009-4b46-46d8-aca9-0efbde69cad0",
+    "url": "https://linear.app/agents-example/issue/AGE-318/fe-fix-custom-bustype-grid-gaps-disabled-seat-slots-in-the-middle-of-a"
   },
   "userManagementService": {
-    "id": "AGE-301",
-    "issueId": "e8ea973f-6ed4-4a80-8602-72eae5531835",
-    "url": "https://linear.app/agents-example/issue/AGE-301/be-user-management-service-prepare-the-project-for-production-deploy"
+    "id": "AGE-319",
+    "issueId": "6a8839d1-1da6-488a-9485-f2f0a2d6bba7",
+    "url": "https://linear.app/agents-example/issue/AGE-319/be-user-management-service-fix-custom-bustype-grid-gaps-disabled-seat"
   },
   "tourService": {
-    "id": "AGE-302",
-    "issueId": "ef17adaa-fa31-44cf-bdbb-37fb47ca8db2",
-    "url": "https://linear.app/agents-example/issue/AGE-302/be-tour-service-prepare-the-project-for-production-deploy-add-a-new"
+    "id": "AGE-320",
+    "issueId": "3d10388d-45b4-4759-960c-754bf4a698ed",
+    "url": "https://linear.app/agents-example/issue/AGE-320/be-tour-service-fix-custom-bustype-grid-gaps-disabled-seat-slots-in"
   },
   "commonService": {
-    "id": "AGE-303",
-    "issueId": "ab3ff4cf-a603-4933-8a8f-621c99b4dfa1",
-    "url": "https://linear.app/agents-example/issue/AGE-303/be-common-service-prepare-the-project-for-production-deploy-add-a-new"
+    "id": "AGE-321",
+    "issueId": "9a0ae4fe-9b6b-4200-bd67-945a1bc6ec29",
+    "url": "https://linear.app/agents-example/issue/AGE-321/be-common-service-fix-custom-bustype-grid-gaps-disabled-seat-slots-in"
   },
   "qa": {
-    "id": "AGE-304",
-    "issueId": "16a3e269-c8b3-4a3f-858e-aace47c5e2d5",
-    "url": "https://linear.app/agents-example/issue/AGE-304/qa-prepare-the-project-for-production-deploy-add-a-new-stateless"
+    "id": "AGE-322",
+    "issueId": "2f9e2bb4-5e94-478f-a383-d89d2b8eb09e",
+    "url": "https://linear.app/agents-example/issue/AGE-322/qa-fix-custom-bustype-grid-gaps-disabled-seat-slots-in-the-middle-of-a"
   },
   "security": {
-    "id": "AGE-305",
-    "issueId": "c713b163-5390-4c62-9fbf-38c17fcc774e",
-    "url": "https://linear.app/agents-example/issue/AGE-305/sec-prepare-the-project-for-production-deploy-add-a-new-stateless"
+    "id": "AGE-323",
+    "issueId": "e64857b2-7a53-4dc5-a622-99318e2bb079",
+    "url": "https://linear.app/agents-example/issue/AGE-323/sec-fix-custom-bustype-grid-gaps-disabled-seat-slots-in-the-middle-of"
   }
 }

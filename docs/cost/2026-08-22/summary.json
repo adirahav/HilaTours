@@ -1,0 +1,41 @@
+{
+  "tasks": [
+    {
+      "role": "orchestrator",
+      "label": "Orchestrator (planning)",
+      "inputTokens": 10808,
+      "outputTokens": 8865,
+      "cacheReadTokens": 380093,
+      "costUsd": 0.54978065,
+      "durationMs": 117274
+    },
+    {
+      "role": "frontend",
+      "label": "Frontend Agent",
+      "inputTokens": 795,
+      "outputTokens": 38340,
+      "cacheReadTokens": 9999075,
+      "costUsd": 4.12481,
+      "durationMs": 1035601
+    },
+    {
+      "role": "tour-service",
+      "label": "Backend Agent — tour-service",
+      "inputTokens": 58,
+      "outputTokens": 19087,
+      "cacheReadTokens": 1711863,
+      "costUsd": 1.0190279,
+      "durationMs": 350924
+    },
+    {
+      "role": "qa",
+      "label": "QA Agent",
+      "inputTokens": 44,
+      "outputTokens": 8835,
+      "cacheReadTokens": 933147,
+      "costUsd": 0.58357985,
+      "durationMs": 447353
+    }
+  ],
+  "totalCostUsd": 6.2771984
+}
