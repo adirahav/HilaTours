@@ -15,8 +15,15 @@ export interface BusInput {
   /**
    * Public uuid of a BusType template to build this bus's seatLayout from
    * (PRD F11). Mutually exclusive with `seatLayout` on create — see createBus.
-   * Ignored on update: a template only defines the *initial* layout, so an
-   * existing bus's seat map is never remapped by a later template edit.
+   *
+   * On update (plan 035) it is NOT ignored: sending `busTypeId` re-generates
+   * the bus's seatLayout from the template and reseeds its seats *by
+   * position* — seats whose position exists in both the old and new layout
+   * keep their occupant and full state untouched, positions new to the layout
+   * are created `available`, and positions that no longer exist are
+   * hard-deleted (losing their occupant, if any — the only, intentional data
+   * loss). On update `busTypeId` takes precedence over `seatLayout`, which is
+   * then silently ignored.
    */
   busTypeId?: string | null
 }
@@ -236,13 +243,71 @@ async function resizeSeats(busId: Types.ObjectId, seatLayout: Record<string, unk
   }
 }
 
+/**
+ * Reseeds a bus's seats to a new seatLayout generated from a BusType template
+ * (plan 035), matching old and new seats *by position*:
+ *  - a position present in both layouts keeps its existing Seat document
+ *    untouched — status, passenger name/phone, pickup point, notes and all
+ *    timestamps survive the bus-type change;
+ *  - a position new to the layout gets a fresh `available` Seat;
+ *  - a position that no longer exists is hard-deleted, together with whatever
+ *    occupied it. That is the only data loss here, and it is intentional and
+ *    product-approved: there is nowhere in the new layout to put that
+ *    passenger. The admin UI gates this behind an explicit confirmation, so
+ *    unlike resizeSeats this path never rejects on occupied seats.
+ *
+ * Deliberately unlike softDeleteBus's soft-delete: a position that is gone
+ * from the layout no longer exists at all, so there is no state to preserve
+ * (same reasoning as resizeSeats' hard delete).
+ */
+async function reseedSeatsByPosition(
+  busId: Types.ObjectId,
+  seatLayout: Record<string, unknown>,
+): Promise<void> {
+  const newPositions = seatPositionsFromLayout(seatLayout)
+  if (newPositions.length === 0) {
+    throw new HttpError(400, "seatLayout produced no seats")
+  }
+  const newSet = new Set(newPositions)
+
+  const existingSeats = await Seat.find({ busId }).select("position").lean()
+  const existingSet = new Set(existingSeats.map((s: any) => s.position as string))
+
+  // Delete first, insert second: the busId+position unique index would reject
+  // an insert that collides with a stale seat if the order were reversed.
+  const toRemove = existingSeats
+    .filter((s: any) => !newSet.has(s.position as string))
+    .map((s: any) => s.position as string)
+  if (toRemove.length > 0) {
+    await Seat.deleteMany({ busId, position: { $in: toRemove } })
+  }
+
+  // Exact string matching only — a fuzzy comparison here would silently drop
+  // an occupied seat that the new layout does still contain.
+  const toAdd = newPositions.filter((p) => !existingSet.has(p))
+  if (toAdd.length > 0) {
+    await Seat.insertMany(toAdd.map((position) => ({ busId, position, status: "available" })))
+  }
+}
+
 export async function updateBus(tourUuid: string, busUuid: string, input: BusInput) {
   const existing = await resolveBusDoc(tourUuid, busUuid)
 
   const update: Record<string, unknown> = {}
   if (input.name !== undefined) update.name = input.name
   if (input.pickupPoints !== undefined) update.pickupPoints = input.pickupPoints
-  if (input.seatLayout !== undefined) {
+
+  // `busTypeId` wins over a raw `seatLayout` sent in the same body (unlike
+  // createBus, which 400s on both): the frontend always sends busTypeId on
+  // update, so precedence keeps that the single source of truth.
+  const hasBusTypeId = input.busTypeId !== undefined && input.busTypeId !== null
+  if (hasBusTypeId) {
+    // Resolve the template first — an unknown/soft-deleted busTypeId must 404
+    // before any seat is touched.
+    const seatLayout = await seatLayoutForBusTypeUuid(input.busTypeId)
+    update.seatLayout = seatLayout
+    await reseedSeatsByPosition(existing._id as Types.ObjectId, seatLayout)
+  } else if (input.seatLayout !== undefined) {
     update.seatLayout = input.seatLayout
     await resizeSeats(existing._id as Types.ObjectId, input.seatLayout)
   }

@@ -1,32 +1,32 @@
 {
   "frontend": {
-    "id": "AGE-306",
-    "issueId": "80999154-0e75-4a97-8d57-62e49994102a",
-    "url": "https://linear.app/agents-example/issue/AGE-306/fe-bustype-management-ניהול-דגמי-אוטובוס-new-bustype-collection-in"
+    "id": "AGE-312",
+    "issueId": "c22f1378-8655-4629-aa04-40e0aff4c670",
+    "url": "https://linear.app/agents-example/issue/AGE-312/fe-allow-destructive-bustype-change-on-existing-buses-via-put"
   },
   "userManagementService": {
-    "id": "AGE-307",
-    "issueId": "7794bd64-7511-432e-ad11-5ea3a2700965",
-    "url": "https://linear.app/agents-example/issue/AGE-307/be-user-management-service-bustype-management-ניהול-דגמי-אוטובוס-new"
+    "id": "AGE-313",
+    "issueId": "ec02679c-0898-46f2-8aa9-225da8ff3e16",
+    "url": "https://linear.app/agents-example/issue/AGE-313/be-user-management-service-allow-destructive-bustype-change-on"
   },
   "tourService": {
-    "id": "AGE-308",
-    "issueId": "b1930669-4897-4a20-9957-aeac6e65bf39",
-    "url": "https://linear.app/agents-example/issue/AGE-308/be-tour-service-bustype-management-ניהול-דגמי-אוטובוס-new-bustype"
+    "id": "AGE-314",
+    "issueId": "5f8c6da7-2c91-44c5-ae4c-13183bec2f60",
+    "url": "https://linear.app/agents-example/issue/AGE-314/be-tour-service-allow-destructive-bustype-change-on-existing-buses-via"
   },
   "commonService": {
-    "id": "AGE-309",
-    "issueId": "5333dd3b-367c-4ea1-bc87-31fae6ecae1a",
-    "url": "https://linear.app/agents-example/issue/AGE-309/be-common-service-bustype-management-ניהול-דגמי-אוטובוס-new-bustype"
+    "id": "AGE-315",
+    "issueId": "8de6576f-7f3e-47ec-836e-80ebf01eb624",
+    "url": "https://linear.app/agents-example/issue/AGE-315/be-common-service-allow-destructive-bustype-change-on-existing-buses"
   },
   "qa": {
-    "id": "AGE-310",
-    "issueId": "81697d22-500a-4f46-a57a-44a87099be04",
-    "url": "https://linear.app/agents-example/issue/AGE-310/qa-bustype-management-ניהול-דגמי-אוטובוס-new-bustype-collection-in"
+    "id": "AGE-316",
+    "issueId": "cebef20c-ab08-4582-82e4-90e30c4ce4ab",
+    "url": "https://linear.app/agents-example/issue/AGE-316/qa-allow-destructive-bustype-change-on-existing-buses-via-put"
   },
   "security": {
-    "id": "AGE-311",
-    "issueId": "2dee382d-767c-4089-8fa2-9402ca10adf9",
-    "url": "https://linear.app/agents-example/issue/AGE-311/sec-bustype-management-ניהול-דגמי-אוטובוס-new-bustype-collection-in"
+    "id": "AGE-317",
+    "issueId": "7a637a2e-3ef5-47e6-935e-1781e6eb9a08",
+    "url": "https://linear.app/agents-example/issue/AGE-317/sec-allow-destructive-bustype-change-on-existing-buses-via-put"
   }
 }

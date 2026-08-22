@@ -62,7 +62,7 @@ describe('Header', () => {
 
     expect(screen.getByText(/טיול לים/)).toBeInTheDocument()
     expect(
-      screen.getByRole('link', { name: /חזרה לדף ראשי/ })
+      screen.getByRole('link', { name: /חזרה/ })
     ).toBeInTheDocument()
   })
 
@@ -148,7 +148,7 @@ describe('Header', () => {
   it('does not render the back-to-gateway control outside passenger mode', () => {
     renderAt('/')
     expect(
-      screen.queryByRole('link', { name: /חזרה לדף ראשי/ })
+      screen.queryByRole('link', { name: /חזרה/ })
     ).not.toBeInTheDocument()
   })
 

@@ -1,78 +1,72 @@
-# 034 — BusType management: new `busType` collection in tour-service
+# 035 — Allow destructive BusType change on existing buses via PUT /tour/:tourId/buses/:busId
 
 Status: draft
 Owner: orchestrator
 Last updated: 2026-08-22
-Scope-Agents: frontend, tour-service, qa, security
+Scope-Agents: tour-service, security, qa
 
 ## Goal
-Let admins define reusable bus-type templates (standard row count, door-row position, back-row seat count, individually disabled seat slots) independent of any tour/bus, manage them (create/edit/duplicate/soft-delete/mark-default), and instantiate a concrete `Bus.seatLayout` from a template when creating a bus — per PRD F11 and the design reference `raw_from_ai_studio/src/components/BusTypeManagement.tsx`.
+
+When an admin updates an existing bus (`PUT /api/tour/:tourId/buses/:busId`) and includes `busTypeId` in the request body, `tour-service` must resolve that BusType, regenerate the bus's `seatLayout` from it, and **hard-delete + recreate** the bus's `Seat` documents to match the new layout — discarding any existing seat state (`available`/`pending`/`taken`/`reserved`) for seats that no longer map 1:1. This mirrors what `insertBus` already does on `POST`, and matches the frontend, which already always sends `busTypeId` on both create and update, and already gates this destructive action behind an explicit confirm checkbox in the admin UI (`BusModal.tsx`). This is a backend-only change to catch up `bus.service.ts`/`bus.controller.ts` to the already-updated API contract and already-shipped frontend behavior.
 
 ## Scope
-- `backend/tour-service/api/models/busType.model.ts` (new): uuid identity + soft-delete Mongoose model.
-- `backend/tour-service/api/busType/busType.service.ts`, `busType.controller.ts`, `busType.routes.ts` (new): CRUD + duplicate, mirroring `backend/tour-service/api/bus/*` conventions (`resolveObjectId`/`resolveDoc`, `toClientX` shaping, `requirePermission`).
-- `backend/tour-service/api/bus/bus.service.ts`: extend `BusInput`/`createBus` to accept an optional `busTypeId`, resolving the template and server-generating `seatLayout` (new helper, e.g. `seatLayoutFromBusType`) instead of requiring the caller to pass `seatLayout` directly. Existing explicit-`seatLayout` callers keep working unchanged.
-- `backend/tour-service/api/app.ts`: mount new `busTypeRouter` alongside `busRouter`.
-- `docs/api-contract/api-contract.tour-service.yaml`: add `/busType`, `/busType/{busTypeId}`, `/busType/{busTypeId}/duplicate` paths and `BusType`/`BusTypeInput` schemas; extend `BusInput` with optional `busTypeId`.
-- `frontend/src/types/busType.types.ts` (new), `frontend/src/services/busType.service.ts` (new), `frontend/src/store/slices/busType.slice.ts` (new) — following the existing `bus.types.ts`/`bus.slice.ts` pattern.
-- `raw_from_ai_studio/src/components/BusTypeManagement.tsx` → adapted into `frontend/src/components/admin/BusTypeManagement.tsx` (exact target path to confirm with `ui-component-layer`/`page-layer` skill conventions during implementation): remove `lib/storage` (localStorage) and `data/initialData` usage, wire to the new store slice/service instead.
-- Bus-creation UI (wherever "add bus" lives, e.g. `BusManagement`/tour admin tab): add a "create from BusType" path that sends `busTypeId` instead of a hand-built `seatLayout`.
-- No changes to `user-management-service` or `common-service`.
+
+- Backend: `backend/tour-service/api/bus/bus.service.ts`, `backend/tour-service/api/bus/bus.controller.ts` (controller likely unchanged — service already receives full `req.body` — but listed for review).
+- No changes expected in `backend/tour-service/api/busType/*` (reuse the existing `seatLayoutForBusTypeUuid` helper as-is).
+- No frontend changes: `frontend/src/**/BusModal.tsx` and `frontend/src/**/bus.service.ts` already send `busTypeId` on update and already implement the warning/confirm-checkbox UX per the task description.
+- Docs: `docs/api-contract/api-contract.tour-service.yaml` already updated per the task description — verify wording matches the final implementation, adjust only if the implementation deviates from what's documented.
 
 ## Assumptions
-- `busType` is its own top-level Mongo collection (not embedded in `Tour`/`Bus`), matching "independent of any tour/bus instance" in the backlog item.
-- Permissions follow the existing `bus:*` convention — new permissions `busType:view`/`busType:insert`/`busType:update`/`busType:delete` are added the same way `bus:*` permissions were (per `jwt-middleware-layer`/RBAC work in plan 032); default admin role gets them.
-- `seatLayout` generation from a template reuses the existing standard-rows + back-row + door-row + disabled-slots model shown in `BusTypeManagement.tsx`'s `generateNumberedGrid`, translated into the `{ positions: string[] }` shape already consumed by `seatPositionsFromLayout` in `bus.service.ts` — no new seatLayout shape is introduced, just a new generator that outputs the shape `Bus` already expects.
-- Duplicate is a server-side action (`POST /busType/:busTypeId/duplicate`), not just a frontend clone, so duplicated templates are persisted immediately and show up for other admins.
-- "Mark as default" is a boolean flag on `BusType` with at most one true at a time (service enforces exclusivity on write), used only as a UI default-selection hint — it does not affect `Bus` creation validation.
+
+- The task description refers to a "`seatLayoutFromBusType`" helper "built for POST"; the actual existing function is `seatLayoutForBusTypeUuid` in `backend/tour-service/api/busType/busType.service.ts`, already imported into `bus.service.ts` and used by `createBus`. This plan treats that as the same helper referenced by the task.
+- `busTypeId: null` (explicit null) on update means "no template" and should behave like `busTypeId` absent (no seatLayout change) — this plan treats presence as `input.busTypeId !== undefined && input.busTypeId !== null`, matching the existing `hasBusTypeId` check pattern used in `createBus`.
+- Hard-delete of `Seat` documents for the destructive path is correct per the task's explicit instruction ("hard-delete all existing Seat documents ... this is intentional data loss, not a bug") — this deliberately diverges from `softDeleteBus`'s soft-delete pattern elsewhere in the same file, and from `resizeSeats`'s occupied-seat protection. That divergence is intentional and scoped only to the `busTypeId`-present branch of `updateBus`.
+- `resizeSeats` (the existing non-destructive resize-by-diff path used when raw `seatLayout` is sent directly, without `busTypeId`) is unaffected and continues to protect occupied seats — this plan does not touch that function or its call site for the `input.seatLayout`-only branch.
+- No design/Figma files apply — this is a pure backend behavior change with no new UI. `raw_from_ai_studio/src/components/BusModal.tsx` (if present) is informational only, confirming the existing confirm-checkbox UX already referenced in the task description, not something this plan implements.
 
 ## Open Questions
-1. Should `busTypeId` + `seatLayout` be mutually exclusive on `POST /tour/:tourId/buses`, or can both be supplied (with `busTypeId` taking precedence)?
-- Recommended: mutually exclusive — reject a request that supplies both with a 400, to avoid ambiguous "which one wins" behavior and keep the contract simple.
 
-2. Does deleting (soft-delete) a `BusType` need to block if buses were created from it, or is it fine since conversion is a one-time copy with no live reference kept?
-- Recommended: no reference is kept after conversion (the template is copied into a concrete `seatLayout` at creation time), so soft-deleting a `BusType` never needs to touch existing buses — allow free deletion.
-
-3. Where exactly should the adapted `BusTypeManagement.tsx` live and which admin tab surfaces it — a new sub-tab under "Tour & Bus Management," or its own top-level tab?
-- Recommended: new sub-tab nested under the existing "Tour & Bus Management" tab (per PRD's own placement of "Bus type management" as a bullet under that tab), not a new top-level tab — avoids restructuring the admin dashboard's tab bar for this ticket.
+1. Should `updateBus` reject the request with 400 if the caller sends **both** `busTypeId` and a raw `seatLayout` in the same PUT body (mirroring `createBus`'s mutual-exclusivity check), or should `busTypeId` simply take precedence and silently ignore `seatLayout`?
+   - Recommended: Reject with 400 ("Supply either seatLayout or busTypeId, not both"), reusing the same mutual-exclusivity guard already written for `createBus`, so update and create have one consistent, unambiguous contract.
+2. Should the destructive reseed run inside a MongoDB transaction (delete-then-insert atomically) to avoid a window where the bus has zero Seat documents if the process crashes mid-operation?
+   - Recommended: Yes if the existing Mongo connection already supports transactions (replica set) — check how other multi-write operations in `tour-service` (e.g. `seat.service.ts` approve/cancel/swap) handle this and reuse the same pattern for consistency; if no existing precedent uses transactions, match that precedent (Mongo standalone deployments often don't support them) rather than introducing a new pattern for just this one path.
+3. Should the endpoint response include any signal that a destructive reseed happened (e.g. `seatsReset: true`), or is silently returning the updated bus (as `createBus`/`updateBus` already do) sufficient?
+   - Recommended: No new response field — the frontend already knows it sent `busTypeId` and already warned the admin before submitting, so the existing `toClientBus` response shape is sufficient and keeps the contract unchanged for this task's scope.
 
 ## Steps
-1. **backend/tour-service — model** (tour-service agent):
-   - `backend/tour-service/api/models/busType.model.ts`: fields `name`, `description?`, `standardRowsCount`, `doorRow: number | null`, `backRowSeatsCount`, `disabledSeatSlots: string[]`, `isDefault: boolean`, plus uuid identity (`applyUuidIdentity`) and soft-delete (`deletedAt`) exactly like `bus.model.ts`. Store in its own `busType` collection.
-2. **backend/tour-service — service/controller/routes** (tour-service agent):
-   - `busType.service.ts`: `listBusTypes`, `getBusType`, `createBusType`, `updateBusType`, `softDeleteBusType`, `duplicateBusType`, `setDefaultBusType` (enforces single-default), and `seatLayoutFromBusType(busType)` — the row/door/back-row/disabled-slot → `{ positions: [...] }` generator, unit-testable in isolation.
-   - `busType.controller.ts` + `busType.routes.ts`: REST endpoints under `requirePermission("busType:*")`, mirroring `bus.routes.ts` structure; `GET /busType` and `GET /busType/:busTypeId` open to any authenticated admin (`busType:view`), mutations gated per-permission.
-   - `app.ts`: `app.use(API_BASE, busTypeRouter)`.
-3. **backend/tour-service — bus creation conversion** (tour-service agent):
-   - Extend `BusInput` in `bus.service.ts` with optional `busTypeId`; in `createBus`, if `busTypeId` present, resolve the `BusType` doc, call `seatLayoutFromBusType`, and use that as `seatLayout` (rejecting if both `busTypeId` and `seatLayout` are supplied, per Open Question 1's recommendation).
-4. **docs/api-contract/api-contract.tour-service.yaml** (tour-service agent):
-   - Add `BusType`/`BusTypeInput` schemas and `/busType`, `/busType/{busTypeId}`, `/busType/{busTypeId}/duplicate` paths; add optional `busTypeId` to `BusInput`.
-5. **frontend/src/types/busType.types.ts, services/busType.service.ts, store/slices/busType.slice.ts** (frontend agent):
-   - Mirror `bus.types.ts`/`bus.service.ts`/`bus.slice.ts` conventions (uuid-keyed, async thunks/actions for list/create/update/delete/duplicate).
-6. **frontend/src/components/admin/BusTypeManagement.tsx** (frontend agent, adapted from `raw_from_ai_studio/src/components/BusTypeManagement.tsx`):
-   - Remove `lib/storage` (`getBusTypes`/`saveBusTypes`/`addBusType`/`editBusType`/`deleteBusType`) and `data/initialData` (`INITIAL_BUS_TYPES`) imports/usage entirely.
-   - Replace with calls into the new `busType.slice.ts`/`busType.service.ts`; "reset to presets" either becomes a no-op removed from the UI or maps to a documented server-seeded default set — flag as an assumption if reused, since PRD/backlog don't mention seeded presets.
-   - Keep the existing grid/door/back-row visual builder and RTL layout as-is (design source of truth); only the persistence layer changes.
-   - Wire into the "Tour & Bus Management" tab per Open Question 3's recommendation.
-7. **Bus-creation UI** (frontend agent): add a "create from BusType" option (dropdown of existing templates) that submits `busTypeId` instead of hand-authored `seatLayout`.
-8. **security** (security agent): review the new `busType:*` permission wiring, confirm mutation routes reject non-admin JWTs, and confirm soft-delete/`deletedAt` scoping matches `bus.model.ts`'s pattern (no leaked deleted templates via list endpoints).
+
+1. `backend/tour-service/api/bus/bus.service.ts` — `updateBus`:
+   - Add the same `hasSeatLayout`/`hasBusTypeId` mutual-exclusivity guard as `createBus` (pending answer to Open Question 1).
+   - When `hasBusTypeId` is true: resolve the seatLayout via `await seatLayoutForBusTypeUuid(input.busTypeId)`, set `update.seatLayout = seatLayout`, then call a new helper (e.g. `reseedSeatsFromLayout(existing._id, seatLayout)`) instead of `resizeSeats`.
+   - Add `reseedSeatsFromLayout(busId, seatLayout)`: compute positions via the existing `seatPositionsFromLayout(seatLayout)`, throw 400 if empty (matching `insertBus`'s guard), then `await Seat.deleteMany({ busId })` (hard delete, no `deletedAt` filter — remove every seat for this bus regardless of status) followed by `await Seat.insertMany(positions.map(position => ({ busId, position, status: "available" })))` — mirrors `insertBus`'s seat-creation block exactly.
+   - Leave the existing `input.seatLayout`-only branch (raw seatLayout, no `busTypeId`) calling `resizeSeats` exactly as today — non-destructive resize behavior is unchanged.
+   - Leave the `input.name`/`input.pickupPoints`-only branch (no `busTypeId`, no `seatLayout`) completely unchanged.
+2. `backend/tour-service/api/bus/bus.controller.ts` — `update`: review only; the controller already forwards the full `req.body` (including `busTypeId`) to `busService.updateBus`, so no code change is expected unless Step 1's guard needs a distinct HTTP status mapping (it doesn't — `HttpError` already flows through the existing error middleware).
+3. Update the JSDoc comment on `BusInput.busTypeId` in `bus.service.ts` (currently states "Ignored on update...") to describe the new destructive-update behavior, so the code comment doesn't contradict the implementation.
+4. Cross-check `docs/api-contract/api-contract.tour-service.yaml`'s `/tour/{tourId}/buses/{busId}` PUT description (already updated per the task) against the final implementation; adjust only if wording drifts (e.g. mutual-exclusivity error, hard-delete semantics).
 
 ## Validation
-- `backend/tour-service`: `npm --prefix backend/tour-service run test` covering `busType.service.ts` CRUD, duplicate, default-exclusivity, `seatLayoutFromBusType` grid generation (including door-row and disabled-slot edge cases), and `createBus` with `busTypeId` vs. explicit `seatLayout` vs. both-supplied (400).
-- `frontend`: `npm --prefix frontend run lint` and existing test runner (if configured) for the new slice/service and adapted component; manually confirm no `localStorage` reads/writes remain in `BusTypeManagement.tsx`.
-- Manual: create a `BusType`, instantiate a `Bus` from it via the admin UI, confirm the resulting seat map matches the template's visual preview (row/door/back-row/disabled slots).
+
+- Unit/integration tests in `backend/tour-service` (wherever existing `bus.service`/`bus.controller` tests live) covering:
+  - PUT with `busTypeId` on a bus that has seats in every status (`available`/`pending`/`taken`/`reserved`) → all old Seat docs gone (hard-deleted, not soft-deleted — verify via `Seat.countDocuments` including any `deletedAt`-scoped query bypass), new Seat docs created matching the BusType's layout, all `status: "available"`.
+  - PUT with `busTypeId` pointing to a nonexistent/soft-deleted BusType uuid → 404, no seats touched (verify `resolveBusDoc`'s existing resolution semantics for BusType, likely reusing `seatLayoutForBusTypeUuid`'s own not-found handling).
+  - PUT with both `busTypeId` and `seatLayout` → 400 per Open Question 1, no seats touched.
+  - PUT with `busTypeId: null` (or omitted) and only `name`/`pickupPoints` → unchanged seatLayout, unchanged Seat documents (existing behavior, regression check).
+  - PUT with raw `seatLayout` only (no `busTypeId`) on a bus with occupied seats being shrunk → still rejected with 400 via `resizeSeats`'s existing occupied-seat guard (regression check — confirms this plan didn't accidentally loosen the non-destructive path).
+- Manual/QA pass through the admin UI: edit an existing bus, change its bus type on a bus with taken/pending/reserved seats, confirm the warning checkbox flow, submit, and verify the seat map fully resets to the new layout with all seats `available`.
 
 ## Risks
-- **Auth/permission gap**: new mutation endpoints (`create`/`update`/`delete`/`duplicate`/`setDefault`) must be gated the same way `bus:*` routes are, or an authenticated-but-unprivileged user could create/delete shared templates used across tours — flagged for the security agent (Scope-Agents includes `security`).
-- **seatLayout translation mismatch**: the door-row/back-row grid model in `BusTypeManagement.tsx` must translate faithfully into the `{ positions: [...] }` shape `bus.service.ts` already parses (`seatPositionsFromLayout`) — a subtle off-by-one in row/seat numbering here would silently produce a wrong-sized or misaligned seat map on the resulting `Bus`, only caught by comparing generated total seats against the live preview's `calculateTotalSeatsFromLayout` equivalent.
-- **Default-template race**: enforcing "only one `isDefault: true`" needs to be atomic (e.g. unset-then-set in one operation or a transaction) to avoid two concurrent admin edits leaving two templates marked default.
+
+- **Data-integrity / irreversible data loss (tour-service):** this is an intentional, product-approved destructive operation, but a bug in the mutual-exclusivity guard or in resolving the wrong `busId` could hard-delete seats unexpectedly. Mitigated by scoping the delete strictly to `{ busId: existing._id }` (matching the already-resolved, tour-scoped bus) and by test coverage in Validation.
+- **Security/authorization (admin-only mutation):** `PUT /tour/:tourId/buses/:busId` already requires admin auth per existing routing — confirm no regression to that guard while touching `bus.controller.ts`; flagged for the `security` agent given this is an admin mutation with PII-adjacent impact (destroys passenger seat assignments, even though passenger PII in `Seat` documents is also deleted as a side effect, which is arguably a privacy-positive but should be confirmed intentional).
+- **Concurrency:** no seat-level locking is introduced here; a booking request (`POST .../seats/bookings`) racing with this destructive update could theoretically insert/act on a seat mid-reseed. Existing `tour-service` concurrency patterns (see `seat-concurrency-layer` skill) should be checked for whether this path needs the same protection — likely low risk since Open Question 2 (transactions) already covers the atomicity angle, but call out explicitly since PRD seat-concurrency rules exist for a reason.
 
 ## Rollout Order
-1. `tour-service` (backend agent) — model, service/controller/routes, bus-creation conversion, API contract update. Independently testable via unit tests before any frontend change.
-2. `frontend` (frontend agent) — types/service/slice, adapted `BusTypeManagement.tsx`, bus-creation "from template" option. Depends on step 1's routes existing (or can be stubbed against the contract in parallel, then wired once live).
-3. `security` — review permission wiring and soft-delete scoping once both sides are in place.
-4. `qa` — end-to-end validation: create template → create bus from template → confirm seat map.
+
+1. Backend (`tour-service`) implementation and tests first — this is the only functional change; ship independently since the frontend contract (`busTypeId` always sent) and API contract docs are already in place.
+2. No frontend deploy needed — `BusModal.tsx`/`bus.service.ts` already send the required payload shape per the task description.
+3. QA validation pass after backend deploy, against a staging bus with occupied seats, before considering this done.
 
 ## Rollback
-- All new backend code is additive (`busType.model.ts`, `busType.service/controller/routes.ts`, one optional field on `BusInput`) — revert via git with no impact on existing `bus`/`tour`/`seat` flows, since `busTypeId` is optional and existing explicit-`seatLayout` bus creation is untouched.
-- Frontend changes are additive (new types/service/slice files, one adapted component, one new option in bus-creation UI) — revert via git; no existing admin flows are removed, only extended.
+
+- Revert the `tour-service` change (Step 1) to restore the prior "seatLayout is intentionally not remapped on update" behavior for `busTypeId` on `PUT`. Since the frontend already always sends `busTypeId`, a rollback here would silently restore the *old* no-op-on-busTypeId behavior — no separate frontend rollback is needed, but note that reverting reintroduces the mismatch between docs/frontend behavior and backend behavior that this plan is meant to fix, so rollback should be a deliberate, short-lived measure only.

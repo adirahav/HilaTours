@@ -291,7 +291,7 @@ export function BusTypeManagement({ isLoading = false }: BusTypeManagementProps)
           className="px-4 py-2.5 bg-blue-600 hover:bg-blue-700 text-white font-bold text-xs sm:text-sm rounded-2xl shadow-md transition flex items-center gap-2 active:scale-95 disabled:opacity-50 focus:outline-none focus-visible:ring-2 focus-visible:ring-blue-700"
         >
           <Plus className="w-4 h-4" aria-hidden="true" />
-          <span>הוסף סוג אוטובוס חדש (55 מושבים)</span>
+          <span>הוסף תבנית אוטובוס חדשה</span>
         </button>
       </div>
 
@@ -388,7 +388,7 @@ export function BusTypeManagement({ isLoading = false }: BusTypeManagementProps)
                               <span className="text-sm font-bold text-white truncate">
                                 {busType.name}
                               </span>
-                              {busType.isDefault && (
+                              {busType.isDefault && false && (
                                 <Star
                                   className="w-3.5 h-3.5 text-amber-400 shrink-0"
                                   aria-label="ברירת מחדל"

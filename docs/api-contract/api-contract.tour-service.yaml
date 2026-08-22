@@ -839,10 +839,25 @@ paths:
                 $ref: '#/components/schemas/Error'
     put:
       tags: [Bus]
-      summary: Update a bus (name, pickup points)
+      summary: Update a bus (name, pickup points, or re-instantiate its seat map from a BusType, preserving matching seats)
       description: >
-        `seatLayout` is intentionally not remapped on update, to avoid
-        destroying existing seat state.
+        Sending `busTypeId` on an UPDATE (product decision, 2026-08-22)
+        regenerates the bus's `seatLayout` from the referenced template and
+        reseeds its seats **by position**: any seat whose `position` exists
+        in both the old and new layout keeps its exact state untouched
+        (status, passenger name/phone, pickup point, etc. — including
+        `pending`/`taken`/`reserved` seats). Only seats at positions that
+        exist in the OLD layout but not the new one are removed, along with
+        whatever occupant they had — e.g. shrinking to a smaller template,
+        or switching to a template whose door-row position shifts seat
+        numbering. New positions introduced by the new template are created
+        `available`. `seatLayout` sent alongside `busTypeId` is ignored —
+        `busTypeId` always wins on update (unlike `POST .../buses`, where the
+        two are mutually exclusive and a 400 is returned if both are sent).
+        There is no server-side confirmation step; the caller (admin
+        frontend) is responsible for confirming with the admin before
+        sending this when it may drop seats. Omitting `busTypeId` (sending
+        only `name`/`pickupPoints`) leaves the existing seat map untouched.
       security:
         - bearerAuth: []
       parameters:

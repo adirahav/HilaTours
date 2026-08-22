@@ -32,10 +32,6 @@ interface BusModalProps {
   busToEdit?: Bus | null
 }
 
-// The fleet only has two physical bus sizes — not a free-form range.
-const BUS_SIZES = [55, 59] as const
-const DEFAULT_SEATS = BUS_SIZES[0]
-
 // Every bus in the fleet has the same fixed door layout — a front door at
 // the driver's side plus a back door at row 8 (see BusMap.tsx) — so neither
 // is a per-bus choice; there's no UI for either. onSave still takes both
@@ -48,18 +44,17 @@ export function BusModal({ isOpen, onClose, onSave, busToEdit }: BusModalProps) 
   const [description, setDescription] = useState('')
   const [pickupPoints, setPickupPoints] = useState<string[]>([])
   const [newPickup, setNewPickup] = useState('')
-  const [totalSeats, setTotalSeats] = useState<number>(DEFAULT_SEATS)
   const [busTypeId, setBusTypeId] = useState<string | null>(null)
   const [draggedIndex, setDraggedIndex] = useState<number | null>(null)
   const [dragOverIndex, setDragOverIndex] = useState<number | null>(null)
   const [nameError, setNameError] = useState('')
   const [pickupError, setPickupError] = useState('')
   const [seatsError, setSeatsError] = useState('')
+  const [confirmReset, setConfirmReset] = useState(false)
 
-  // Templates are loaded into the store by the admin dashboard. They only
-  // apply when creating a bus — editing never remaps an existing seat map.
+  // Templates are loaded into the store by the admin dashboard. Bus size is
+  // always chosen from this list — there is no manual/free-form seat count.
   const busTypes = useStore((state) => state.busTypes)
-  const canUseBusType = !busToEdit && busTypes.length > 0
   const selectedBusType = busTypes.find((t) => t.id === busTypeId) ?? null
 
   const titleId = useId()
@@ -69,12 +64,21 @@ export function BusModal({ isOpen, onClose, onSave, busToEdit }: BusModalProps) 
   const dialogRef = useRef<HTMLDivElement>(null)
   const nameInputRef = useRef<HTMLInputElement>(null)
 
-  // Q6: reducing totalSeats below the highest occupied seat number is blocked
-  // — so a bus size smaller than that is not a selectable option at all.
-  const minSeats = useMemo(() => {
-    const occupied = busToEdit?.seats?.filter((s) => s.seatStatus !== 'available') ?? []
-    return occupied.reduce((max, s) => Math.max(max, s.seatNumber), 0)
-  }, [busToEdit])
+  // Product decision (2026-08-22): changing the bus type on an existing bus
+  // is always allowed, even when seats are already occupied/booked. The
+  // backend reseeds by position — seats whose position exists in both the
+  // old and new layout keep their occupant untouched; only seats at
+  // positions absent from the new layout (e.g. a smaller template, or a
+  // door-row shift) lose their assignment. No size restriction is applied
+  // here; the admin only has to explicitly confirm before doing this when
+  // any seat is occupied, since some occupants may be affected (see
+  // confirmReset) — this is a conservative warning, not a guarantee that
+  // every occupied seat will actually be lost.
+  const hasOccupiedSeats = useMemo(
+    () => (busToEdit?.seats ?? []).some((s) => s.seatStatus !== 'available'),
+    [busToEdit]
+  )
+  const isChangingBusType = !!busToEdit && selectedBusType !== null
 
   useEffect(() => {
     if (!isOpen) return
@@ -82,13 +86,14 @@ export function BusModal({ isOpen, onClose, onSave, busToEdit }: BusModalProps) 
       setBusName(busToEdit.busName)
       setDescription(busToEdit.description || '')
       setPickupPoints([...busToEdit.pickupPoints])
-      setTotalSeats(busToEdit.totalSeats || DEFAULT_SEATS)
-      setBusTypeId(null)
+      // No link is kept between a bus and the template it was created from
+      // (see plan 034, Open Question 2) — preselect the template whose seat
+      // count matches, if any, else leave it for the admin to pick.
+      setBusTypeId(busTypes.find((t) => t.totalSeats === busToEdit.totalSeats)?.id ?? null)
     } else {
       setBusName('')
       setDescription('')
       setPickupPoints([])
-      setTotalSeats(DEFAULT_SEATS)
       // Preselect the template marked as default, if one exists.
       setBusTypeId(busTypes.find((t) => t.isDefault)?.id ?? null)
     }
@@ -96,7 +101,8 @@ export function BusModal({ isOpen, onClose, onSave, busToEdit }: BusModalProps) 
     setNameError('')
     setPickupError('')
     setSeatsError('')
-  }, [busToEdit, isOpen, minSeats, busTypes])
+    setConfirmReset(false)
+  }, [busToEdit, isOpen, busTypes])
 
   // Initial focus on the name input when opened.
   useEffect(() => {
@@ -194,10 +200,16 @@ export function BusModal({ isOpen, onClose, onSave, busToEdit }: BusModalProps) 
       setNameError('יש להזין שם/מזהה לאוטובוס')
       hasError = true
     }
-    // Q6: block reducing the seat count below already-occupied seat numbers.
-    // Irrelevant when a template is used — that path only exists on create.
-    if (!selectedBusType && totalSeats < minSeats) {
-      setSeatsError(`לא ניתן להפחית את מספר המושבים מתחת ל-${minSeats} (קיימים מושבים תפוסים)`)
+    if (!selectedBusType) {
+      setSeatsError('יש לבחור דגם אוטובוס')
+      hasError = true
+    } else if (isChangingBusType && hasOccupiedSeats && !confirmReset) {
+      // Confirmation guard: the backend reseeds by position (positions
+      // shared with the new layout keep their occupant; positions absent
+      // from it lose theirs) — always allowed, never size-blocked, but
+      // requires explicit admin confirmation whenever any seat is occupied
+      // (product decision, 2026-08-22).
+      setSeatsError('יש לאשר את השינוי לפני החלפת הדגם')
       hasError = true
     }
     if (hasError) return
@@ -205,10 +217,10 @@ export function BusModal({ isOpen, onClose, onSave, busToEdit }: BusModalProps) 
       trimmedName,
       description.trim(),
       pickupPoints,
-      selectedBusType ? selectedBusType.totalSeats : totalSeats,
+      selectedBusType!.totalSeats,
       DRIVER_SIDE,
       DOOR_POSITION,
-      selectedBusType ? selectedBusType.id : null
+      selectedBusType!.id
     )
     onClose()
   }
@@ -300,81 +312,72 @@ export function BusModal({ isOpen, onClose, onSave, busToEdit }: BusModalProps) 
             />
           </div>
 
-          {canUseBusType && (
-            <div>
-              <label
-                htmlFor={`${titleId}-bus-type`}
-                className="block text-xs font-bold text-slate-700 mb-1"
-              >
-                יצירה מדגם אוטובוס (תבנית):
-              </label>
-              <select
-                id={`${titleId}-bus-type`}
-                value={busTypeId ?? ''}
-                onChange={(e) => {
-                  setBusTypeId(e.target.value || null)
-                  setSeatsError('')
-                }}
-                className={inputClass}
-              >
-                <option value="">ללא תבנית - בחירת גודל ידנית</option>
-                {busTypes.map((busType) => (
-                  <option key={busType.id} value={busType.id}>
-                    {busType.name} ({busType.totalSeats} מושבים)
-                    {busType.isDefault ? ' - ברירת מחדל' : ''}
-                  </option>
-                ))}
-              </select>
-              {selectedBusType && (
-                <p className="text-[11px] text-slate-500 mt-1">
-                  מפת המושבים תיווצר לפי התבנית: {selectedBusType.totalSeats} מושבים,{' '}
-                  {selectedBusType.standardRowsCount} שורות
-                  {selectedBusType.doorRow ? `, דלת בשורה ${selectedBusType.doorRow}` : ', ללא דלת אמצעית'}.
-                </p>
-              )}
-            </div>
-          )}
-
-          <div className={cn(selectedBusType && 'hidden')}>
-            <div className="flex items-center justify-between mb-1">
-              <span id={`${titleId}-seats-label`} className="block text-xs font-bold text-slate-700">
-                גודל האוטובוס:
-              </span>
-            </div>
-
-            <div
-              role="radiogroup"
-              aria-labelledby={`${titleId}-seats-label`}
-              aria-describedby={seatsError ? seatsErrorId : undefined}
-              className="grid grid-cols-2 gap-2"
+          <div>
+            <label
+              htmlFor={`${titleId}-bus-type`}
+              className="block text-xs font-bold text-slate-700 mb-1"
             >
-              {BUS_SIZES.map((size) => {
-                const disabled = size < minSeats
-                const selected = totalSeats === size
-                return (
-                  <button
-                    key={size}
-                    type="button"
-                    role="radio"
-                    aria-checked={selected}
-                    disabled={disabled}
-                    onClick={() => {
-                      setTotalSeats(size)
-                      if (seatsError) setSeatsError('')
-                    }}
-                    className={cn(
-                      'py-2.5 rounded-xl border-2 text-sm font-extrabold transition focus:outline-none focus-visible:ring-2 focus-visible:ring-blue-500',
-                      selected
-                        ? 'bg-blue-600 text-white border-blue-700 shadow-md'
-                        : 'bg-slate-50 text-slate-700 border-slate-300 hover:bg-slate-100',
-                      disabled && 'opacity-40 cursor-not-allowed hover:bg-slate-50'
-                    )}
-                  >
-                    {size} מושבים
-                  </button>
-                )
-              })}
-            </div>
+              דגם אוטובוס (גודל וגריד המושבים):
+            </label>
+            {busTypes.length === 0 ? (
+              <p className="text-[11px] font-semibold text-rose-600">
+                אין דגמי אוטובוס מוגדרים במערכת — יש להגדיר דגם תחילה בניהול דגמי אוטובוס.
+              </p>
+            ) : (
+              <>
+                <select
+                  id={`${titleId}-bus-type`}
+                  value={busTypeId ?? ''}
+                  aria-invalid={!!seatsError}
+                  aria-describedby={seatsError ? seatsErrorId : undefined}
+                  onChange={(e) => {
+                    setBusTypeId(e.target.value || null)
+                    setSeatsError('')
+                  }}
+                  className={cn(inputClass, seatsError && 'border-rose-400 focus:ring-rose-500')}
+                >
+                  <option value="">בחר דגם אוטובוס...</option>
+                  {busTypes.map((busType) => (
+                    <option key={busType.id} value={busType.id}>
+                      {busType.name} ({busType.totalSeats} מושבים)
+                      {busType.isDefault ? ' - ברירת מחדל' : ''}
+                    </option>
+                  ))}
+                </select>
+                {selectedBusType && (
+                  <p className="text-[11px] text-slate-500 mt-1">
+                    מפת המושבים תיווצר לפי הדגם: {selectedBusType.totalSeats} מושבים,{' '}
+                    {selectedBusType.standardRowsCount} שורות
+                    {selectedBusType.doorRow ? `, דלת בשורה ${selectedBusType.doorRow}` : ', ללא דלת אמצעית'}.
+                  </p>
+                )}
+                {isChangingBusType && hasOccupiedSeats && (
+                  <div className="mt-2 rounded-2xl border border-amber-300 bg-amber-50 p-3">
+                    <p className="text-[11px] font-semibold text-amber-800 flex items-start gap-1.5">
+                      <AlertCircle className="w-3.5 h-3.5 shrink-0 mt-0.5" aria-hidden="true" />
+                      <span>
+                        שינוי הדגם יעדכן את מפת המושבים: נוסעים במושבים שקיימים גם בדגם החדש{' '}
+                        <b>ישמרו את השיוך שלהם</b>, אך <b>מושבים שלא קיימים בדגם החדש</b> (למשל אם הדגם קטן
+                        יותר, או שמיקום הדלת שונה) <b>יאבדו את שיוך הנוסע</b>. פעולה זו אינה הפיכה עבור
+                        המושבים שנעלמים.
+                      </span>
+                    </p>
+                    <label className="flex items-center gap-2 mt-2 text-[11px] font-medium text-amber-900">
+                      <input
+                        type="checkbox"
+                        checked={confirmReset}
+                        onChange={(e) => {
+                          setConfirmReset(e.target.checked)
+                          if (seatsError) setSeatsError('')
+                        }}
+                        className="rounded border-amber-400 text-amber-700 focus:ring-amber-500"
+                      />
+                      אני מבין/ה ומאשר/ת שמושבים שלא קיימים בדגם החדש יאבדו את שיוך הנוסע
+                    </label>
+                  </div>
+                )}
+              </>
+            )}
             {seatsError && (
               <p
                 id={seatsErrorId}

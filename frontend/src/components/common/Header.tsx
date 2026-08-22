@@ -153,8 +153,8 @@ export function Header() {
               to="/"
               className="text-xs text-slate-300 hover:text-white transition flex items-center gap-1.5 bg-slate-800 hover:bg-slate-700 px-3 py-1.5 rounded-xl border border-slate-700 shadow-xs focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-blue-400"
             >
+              <span className="font-medium">חזרה</span>
               <ArrowRight className="w-3.5 h-3.5 text-blue-400 rotate-180" />
-              <span className="font-medium">חזרה לדף ראשי</span>
             </Link>
           )}
 
