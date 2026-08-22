@@ -375,8 +375,13 @@ export function BusMap({
 
         <div
           className="grid grid-cols-5 gap-2 sm:gap-3 mb-2 text-center text-xs font-semibold text-slate-500 px-1"
-          dir="rtl"
         >
+          {/* Column order must match the seat grid below, which renders
+              col1..col4 left-to-right under the wrapper's dir="ltr" (line
+              ~335) — this row previously forced dir="rtl" here only, which
+              visually reversed these labels relative to the seat cells
+              beneath them (admin-reported bug, 2026-08-22). No dir means it
+              inherits ltr from the wrapper, matching the seats exactly. */}
           <div>שמאל (חלון)</div>
           <div>שמאל (מעבר)</div>
           <div className="text-slate-400 font-normal">מעבר</div>

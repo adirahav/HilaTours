@@ -1,9 +1,18 @@
 # 037 — Fix: custom BusType grid gaps (disabled seat slots) lost by the time the seat map renders
 
-Status: done
+Status: done (re-verified and completed 2026-08-22 — the original "done" mark was premature, see Post-Mortem below)
 Owner: orchestrator
 Last updated: 2026-08-22
 Scope-Agents: tour-service, frontend, qa
+
+## Post-Mortem (2026-08-22, same day)
+
+This plan was marked `done` before it actually was. Follow-up investigation (prompted by an admin-reported RTL/LTR direction mismatch between the admin and passenger seat views — a separate, now-fixed `dir` bug in `BusMap.tsx`) found that the core fix here was incomplete:
+
+- `backend/tour-service/api/busType/busType.service.ts`'s `busTypeGridForBus` correctly computed `{ position, row, col }[]` for every seat (the render-time grid join this plan called for), and `toClientBus` correctly attached the resulting `busTypeGrid` object (with its `seats` array) to the bus response.
+- But `toClientSeat`/`toPublicSeat` in `backend/tour-service/api/lib/clientShape.ts` never merged `row`/`col` onto each individual `Seat` in the bus's `seats` array — they only ever returned `{id, position, status, ...}`. `frontend/src/lib/tourMapper.ts`'s `mapSeatsInternal` checks `raw.row`/`raw.col` directly on each seat (`hasServerCell`), never `raw.busTypeGrid.seats` — so `hasServerCell` was always `false` for every seat, `needsFallbackLayout` was always `true`, and **every** bus — including BusType-derived ones — silently fell back to the generic `generateBusSeats(totalSeats)` layout the entire time. The gap-losing bug this plan was meant to fix was therefore never actually fixed, despite the plan's `Status: done` and full test/validation section.
+- **Fixed now**: added `withGridCells()` in `backend/tour-service/api/bus/bus.service.ts`, which merges each seat's `row`/`col` (looked up by `position` from the already-computed `busTypeGridForBus(...).seats`) onto its client shape, wired into both `listBusesWithPublicSeats` (public) and `getBusWithSeats` (admin) — the two read paths that return a bus's `seats` array. `createBus`/`updateBus` don't need it (they don't return an embedded `seats` array). Seat-mutation endpoints (`seat.service.ts`: bookings/approve/cancel/etc.) also don't need it — confirmed the frontend (`seat.service.ts`'s `mergeSeatUpdate`) already merges mutation responses by `id` into already-loaded seats, preserving existing `row`/`col` rather than replacing wholesale.
+- **Lesson**: a plan's `Status: done` should mean "traced end-to-end and verified," not "every file in Scope was touched." This one had every individual piece correctly built (grid computation, grid attachment to the bus, frontend consumption logic) but the one merge step connecting the per-seat grid to the per-seat client response was missing, and nothing caught it until a human noticed a visual symptom of the still-broken fallback.
 
 ## Goal
 

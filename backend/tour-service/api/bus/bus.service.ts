@@ -12,6 +12,28 @@ import {
   seatLayoutForBusTypeUuid,
 } from "../busType/busType.service"
 
+/**
+ * Merges each seat's live grid cell (row/col, gaps included) from the
+ * BusType join onto its client shape. `toClientSeat`/`toPublicSeat` never
+ * carry row/col themselves — this is the one place that stitches them
+ * together, by `position`, right before a bus response goes out. Without
+ * this step the frontend never receives `row`/`col` per seat and silently
+ * falls back to its generic layout for every bus, template-derived or not
+ * (the exact regression plan 037 was meant to close — see plan 037 QA note,
+ * 2026-08-22).
+ */
+function withGridCells<T extends { position: string }>(
+  seatShapes: T[],
+  grid: Awaited<ReturnType<typeof busTypeGridForBus>>,
+): (T & { row?: number; col?: number })[] {
+  if (!grid) return seatShapes
+  const byPosition = new Map(grid.seats.map((s) => [s.position, s]))
+  return seatShapes.map((shape) => {
+    const cell = byPosition.get(shape.position)
+    return cell ? { ...shape, row: cell.row, col: cell.col } : shape
+  })
+}
+
 export interface BusInput {
   name?: string
   seatLayout?: Record<string, unknown>
@@ -126,12 +148,13 @@ export async function listBusesWithPublicSeats(tourId: Types.ObjectId, tourUuid:
     buses.map(async (bus: any) => {
       const seats = await Seat.find({ busId: bus._id }).select(PUBLIC_SEAT_FIELDS).lean()
       seats.sort((a: any, b: any) => comparePosition(a.position, b.position))
+      const grid = await busTypeGridForBus(bus.busTypeId)
       // The grid is structural (row/col only) — adding it here does NOT widen
       // PUBLIC_SEAT_FIELDS and carries no passenger data (SEV-001).
       return {
-        ...toClientBus(bus, tourUuid, await busTypeGridForBus(bus.busTypeId)),
+        ...toClientBus(bus, tourUuid, grid),
         totalSeats: seats.length,
-        seats: seats.map(toPublicSeat),
+        seats: withGridCells(seats.map(toPublicSeat), grid),
       }
     }),
   )
@@ -141,9 +164,13 @@ export async function getBusWithSeats(tourUuid: string, busUuid: string) {
   const bus = await resolveBusDoc(tourUuid, busUuid)
   const seats = await Seat.find({ busId: bus._id }).lean()
   seats.sort((a: any, b: any) => comparePosition(a.position, b.position))
+  const grid = await busTypeGridForBus(bus.busTypeId as any)
   return {
-    ...toClientBus(bus, tourUuid, await busTypeGridForBus(bus.busTypeId as any)),
-    seats: seats.map((s: any) => toClientSeat(s, bus.uuid)),
+    ...toClientBus(bus, tourUuid, grid),
+    seats: withGridCells(
+      seats.map((s: any) => toClientSeat(s, bus.uuid)),
+      grid,
+    ),
   }
 }
 

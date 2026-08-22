@@ -349,7 +349,6 @@ export function BusModal({ isOpen, onClose, onSave, busToEdit }: BusModalProps) 
                   {busTypes.map((busType) => (
                     <option key={busType.id} value={busType.id}>
                       {busType.name} ({busType.totalSeats} מושבים)
-                      {busType.isDefault ? ' - ברירת מחדל' : ''}
                     </option>
                   ))}
                 </select>
