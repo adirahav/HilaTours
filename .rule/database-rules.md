@@ -42,7 +42,7 @@
 - `uuid` — String (unique, indexed — the `id` clients see)
 - `key` — String, required, unique (e.g. `"tour:insert"`, `"seat:approve"`) — the `<category>:<canonicalAction>` naming convention; action names must match the canonical seat actions in `glossary.md` (`bookings`, `approve`, `cancel`, `toggleReserve`, `manualAssign`, `swapMove`) where applicable, never ad-hoc synonyms.
 - `description` — String, required
-- `category` — String, required (`"tour"` | `"bus"` | `"seat"`) — must match the domain in `key`, not be copy-pasted from another category.
+- `category` — String, required (`"tour"` | `"bus"` | `"busType"` | `"seat"`) — must match the domain in `key`, not be copy-pasted from another category.
 - `createdAt` — Date, default: Date.now
 
 ### tour  *(owned by `tour-service`)*
@@ -64,6 +64,21 @@
 - `pickupPoints` — [{ `name`: String, `order`: Number }], required — pickup points belong to the bus, not the tour (per `glossary.md`)
 - `createdAt` — Date, default: Date.now
 - `deletedAt` — Date, default: null (soft delete)
+
+### busType  *(owned by `tour-service`)*
+- `_id` — ObjectId (auto-generated, internal only — never sent to clients)
+- `uuid` — String (auto-generated, unique, indexed — this is the `id` clients see)
+- `name` — String, required
+- `description` — String, default: null
+- `standardRowsCount` — Number, required — number of standard 4-seat rows (2 seats each side of the aisle)
+- `doorRow` — Number, default: null — 1-based row index where the middle door replaces the right-side seat pair; null means no middle door
+- `backRowSeatsCount` — Number, required — seats in the final bench row (no aisle)
+- `disabledSeatSlots` — [String], default: `[]` — `"row-col"` keys for slots blocked in the grid
+- `isDefault` — Boolean, default: false
+- `createdAt` — Date, default: Date.now
+- `deletedAt` — Date, default: null (soft delete)
+
+> Independent of `tour`/`bus` — a `busType` is a design-time template only. Instantiating a `bus` from a `busType` (`busTypeId` on the bus-create request) generates that bus's `seatLayout` once, at creation time; the two are never linked afterwards, so editing/deleting a `busType` never touches buses already created from it. `totalSeats` is not stored — it's derived from the layout fields and recomputed on every read/write, never trusted from the client.
 
 ### seat  *(owned by `tour-service`)*
 - `_id` — ObjectId (auto-generated, internal only — never sent to clients)
@@ -113,17 +128,18 @@
   - `permission`: key (unique)
   - `tour`: `createdBy`
   - `bus`: `tourId`
+  - `busType`: none beyond `uuid` (small, admin-managed set — no compound query pattern justifies one yet)
   - `seat`: `busId` + `position` (compound, unique — no duplicate seat positions on the same bus); `busId` + `status` (compound, for fast seat-map queries)
 
 ## Soft Delete
-- Documents are never permanently deleted — set `deletedAt` to current timestamp. Applies to `user`, `tour`, and `bus`.
+- Documents are never permanently deleted — set `deletedAt` to current timestamp. Applies to `user`, `tour`, `bus`, and `busType`.
 - All queries must filter: `{ deletedAt: null }`.
 - Use Mongoose `pre('find')` middleware to exclude soft-deleted documents automatically.
 - `seats` do not use soft delete individually — they're deleted/recreated as part of their parent `bus` being soft-deleted, since a seat has no meaning outside its bus.
 - `role`/`permission` do not use soft delete — they're small, admin-managed reference data; if one is retired, remove it and its references directly.
 
 ## Operational Notes
-- Each microservice owns its own collections — never access another service's collections directly. `user-management-service` owns `user`, `role`, `permission`; `tour-service` owns `tour`, `bus`, `seat`.
+- Each microservice owns its own collections — never access another service's collections directly. `user-management-service` owns `user`, `role`, `permission`; `tour-service` owns `tour`, `bus`, `busType`, `seat`.
 - Do not store in-memory state between requests — especially seat status, which must always be read from the DB, never cached in a way that could serve a stale `available` status during a booking check.
 - Define indexes in Mongoose schemas (`index: true` or `unique: true`).
 

@@ -80,6 +80,27 @@ export function toClientBus(bus: Record<string, any>, tourUuid?: string) {
 }
 
 /**
+ * BusType template as seen by a client. `totalSeats` is always the
+ * server-derived value stored on the document — a client-supplied count is
+ * never persisted, so it can never leak back out here.
+ */
+export function toClientBusType(busType: Record<string, any>) {
+  return {
+    id: busType.uuid,
+    name: busType.name,
+    description: busType.description ?? null,
+    totalSeats: busType.totalSeats,
+    standardRowsCount: busType.standardRowsCount,
+    doorRow: busType.doorRow ?? null,
+    backRowSeatsCount: busType.backRowSeatsCount,
+    disabledSeatSlots: busType.disabledSeatSlots ?? [],
+    isDefault: busType.isDefault ?? false,
+    createdAt: busType.createdAt,
+    deletedAt: busType.deletedAt ?? null,
+  }
+}
+
+/**
  * Full seat record — PII included, so only ever returned from
  * admin-authenticated routes (SEV-001). `busId` is the owning bus's uuid.
  * `assignedBy` is internal admin attribution and is deliberately withheld.

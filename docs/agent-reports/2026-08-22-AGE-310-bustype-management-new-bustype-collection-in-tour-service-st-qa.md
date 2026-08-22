@@ -1,0 +1,3 @@
+QA validation complete for AGE-310. All busType-specific tests pass (backend 27/27, frontend 21/21), lint/build pass, no relevant AC failures. Two non-blocking findings flagged: (1) duplicate is client-side only rather than a dedicated server endpoint per plan, and (2) a pre-existing, unrelated frontend test regression from date-filtering fixture data. Report written to `docs/agent-reports/2026-08-22-AGE-310-bustype-management-new-bustype-collection-in-tour-service-st-qa.md`.
+
+STATUS: DONE

@@ -31,6 +31,11 @@ Define canonical domain terms and approved short forms used across code, API rou
   - `reserved` — locked by an admin/management, not bookable by passengers.
 - **Use:** Always these four exact values, not `open`/`booked`/`held`/`locked` or Hebrew equivalents.
 
+### `busType`
+- **Canonical meaning:** A reusable seat-layout template (standard rows, door-row position, back-row seat count, disabled seat slots) that a `bus` can be instantiated from. Independent of any `tour`/`bus` instance — editing a `busType` never retroactively changes buses already created from it.
+- **Use:** Always `busType`, not `busModel`, `busTemplate`, or `dugmaOtobus`.
+- **Plural:** `busTypes`.
+
 ### `pickupPoint`
 - **Canonical meaning:** A named location where passengers can board a specific bus.
 - **Use:** Always `pickupPoint`, not `station`, `stop`, or `nekudatIsuf`.

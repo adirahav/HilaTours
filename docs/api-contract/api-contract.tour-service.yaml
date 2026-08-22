@@ -122,19 +122,116 @@ components:
 
     BusInput:
       type: object
+      description: >
+        `seatLayout` and `busTypeId` are mutually exclusive — supply exactly
+        one, never both. `seatLayout` defines the layout manually (as today);
+        `busTypeId` generates it server-side from the referenced BusType
+        template (see F11 in PRD.md). A request supplying both, or neither,
+        is rejected with 400.
       required:
         - name
-        - seatLayout
       properties:
         name:
           type: string
           example: "Bus 1"
         seatLayout:
           type: object
+          nullable: true
+          description: Required unless `busTypeId` is supplied instead. Mutually exclusive with `busTypeId`.
         pickupPoints:
           type: array
           items:
             $ref: '#/components/schemas/PickupPoint'
+        busTypeId:
+          type: string
+          format: uuid
+          nullable: true
+          description: >
+            Required unless `seatLayout` is supplied instead. Mutually
+            exclusive with `seatLayout` — sending both fields is a 400, not
+            a "busTypeId wins" merge.
+
+    BusType:
+      type: object
+      description: >
+        A reusable bus layout template (grid of standard rows, a door-row
+        position, a back bench row, and individually disabled seat slots),
+        independent of any tour/bus instance. Instantiating a Bus from a
+        BusType converts it into a concrete `seatLayout` — editing a BusType
+        afterwards never retroactively changes buses already created from it.
+        Design source: raw_from_ai_studio/src/components/BusTypeManagement.tsx.
+      properties:
+        id:
+          type: string
+          format: uuid
+        name:
+          type: string
+          example: "אוטובוס 55 מקומות"
+        description:
+          type: string
+          nullable: true
+        totalSeats:
+          type: integer
+          description: Derived from the layout fields below; recomputed server-side on every write, never trusted from the client.
+          example: 55
+        standardRowsCount:
+          type: integer
+          description: Number of standard 4-seat rows (2 seats each side of the aisle).
+          example: 13
+        doorRow:
+          type: integer
+          nullable: true
+          description: 1-based row index where the middle door replaces the right-side seat pair (cols 3-4). Null means no middle door.
+          example: 7
+        backRowSeatsCount:
+          type: integer
+          description: Number of seats in the final bench row (no aisle).
+          example: 5
+        disabledSeatSlots:
+          type: array
+          items:
+            type: string
+          description: '`"row-col"` keys (e.g. `"3-2"`) for slots blocked in the grid (no seat rendered/bookable there).'
+        isDefault:
+          type: boolean
+          default: false
+        createdAt:
+          type: string
+          format: date-time
+        deletedAt:
+          type: string
+          format: date-time
+          nullable: true
+          description: Soft-delete timestamp. Null means the bus type is active.
+
+    BusTypeInput:
+      type: object
+      required:
+        - name
+        - standardRowsCount
+        - backRowSeatsCount
+      properties:
+        name:
+          type: string
+          example: "אוטובוס 55 מקומות"
+        description:
+          type: string
+        standardRowsCount:
+          type: integer
+          example: 13
+        doorRow:
+          type: integer
+          nullable: true
+          example: 7
+        backRowSeatsCount:
+          type: integer
+          example: 5
+        disabledSeatSlots:
+          type: array
+          items:
+            type: string
+        isDefault:
+          type: boolean
 
     BusWithPublicSeats:
       description: >
@@ -515,6 +612,119 @@ paths:
               schema:
                 $ref: '#/components/schemas/Error'
 
+  /busType:
+    get:
+      tags: [BusType]
+      summary: List all open (non-deleted) bus type templates
+      security:
+        - bearerAuth: []
+      responses:
+        '200':
+          description: List of bus types
+          content:
+            application/json:
+              schema:
+                type: array
+                items:
+                  $ref: '#/components/schemas/BusType'
+        '401':
+          description: Missing/invalid admin JWT
+    post:
+      tags: [BusType]
+      summary: Create a bus type template
+      security:
+        - bearerAuth: []
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: '#/components/schemas/BusTypeInput'
+      responses:
+        '200':
+          description: Bus type created
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/BusType'
+        '400':
+          description: Missing/invalid fields
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/Error'
+        '401':
+          description: Missing/invalid admin JWT
+
+  /busType/{busTypeId}:
+    put:
+      tags: [BusType]
+      summary: Update a bus type template
+      description: >
+        Never retroactively changes buses already instantiated from this
+        template — `seatLayout` on existing buses is not remapped.
+      security:
+        - bearerAuth: []
+      parameters:
+        - name: busTypeId
+          in: path
+          required: true
+          schema:
+            type: string
+            format: uuid
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: '#/components/schemas/BusTypeInput'
+      responses:
+        '200':
+          description: Bus type updated
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/BusType'
+        '401':
+          description: Missing/invalid admin JWT
+        '404':
+          description: Bus type not found
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/Error'
+    delete:
+      tags: [BusType]
+      summary: Soft-delete a bus type template
+      description: >
+        Sets `deletedAt` rather than removing the document (see
+        database-rules.md). Does not affect buses already instantiated
+        from this template.
+      security:
+        - bearerAuth: []
+      parameters:
+        - name: busTypeId
+          in: path
+          required: true
+          schema:
+            type: string
+            format: uuid
+      responses:
+        '200':
+          description: Bus type soft-deleted
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/BusType'
+        '401':
+          description: Missing/invalid admin JWT
+        '404':
+          description: Bus type not found or already deleted
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/Error'
+
   /tour/{tourId}/buses:
     get:
       tags: [Bus]
@@ -538,7 +748,10 @@ paths:
                   $ref: '#/components/schemas/Bus'
     post:
       tags: [Bus]
-      summary: Create a bus (pre-creates its seats from seatLayout)
+      summary: Create a bus (pre-creates its seats from seatLayout, or from a BusType template)
+      description: >
+        Provide exactly one of `seatLayout` or `busTypeId` in the request
+        body — supplying both, or neither, is rejected with 400.
       security:
         - bearerAuth: []
       parameters:
@@ -562,13 +775,21 @@ paths:
               schema:
                 $ref: '#/components/schemas/Bus'
         '400':
-          description: Missing/invalid name or seatLayout
+          description: >
+            Missing/invalid name; missing both `seatLayout` and `busTypeId`;
+            or both `seatLayout` and `busTypeId` supplied together.
           content:
             application/json:
               schema:
                 $ref: '#/components/schemas/Error'
         '401':
           description: Missing/invalid admin JWT
+        '404':
+          description: busTypeId does not reference an existing (non-deleted) bus type
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/Error'
 
   /tour/{tourId}/buses/{busId}:
     get:

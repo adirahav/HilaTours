@@ -2,6 +2,7 @@ import express, { NextFunction, Request, Response } from "express"
 import cors from "cors"
 import { tourRouter } from "./tour/tour.routes"
 import { busRouter } from "./bus/bus.routes"
+import { busTypeRouter } from "./busType/busType.routes"
 import { seatRouter } from "./seat/seat.routes"
 import { manifestRouter } from "./manifest/manifest.routes"
 import { HttpError } from "./lib/http"
@@ -37,6 +38,7 @@ export function createApp() {
 
   app.use(API_BASE, tourRouter)
   app.use(API_BASE, busRouter)
+  app.use(API_BASE, busTypeRouter)
   app.use(API_BASE, seatRouter)
   app.use(API_BASE, manifestRouter)
 

@@ -1,5 +1,6 @@
 ﻿import { Link, useLocation, useNavigate } from 'react-router-dom'
-import { Bus, LogOut, Calendar, FileText, ArrowRight } from 'lucide-react'
+// `FileText` returns when the commented-out "דוח נוסעים" tab below is re-enabled.
+import { Bus, LogOut, Calendar, ArrowRight, Sliders } from 'lucide-react'
 import { toast } from 'sonner'
 import { useStore } from '../../store/store'
 import { authService } from '../../services/auth.service'
@@ -7,7 +8,7 @@ import { cn } from '../../lib/utils'
 import logo from '../../assets/images/logo.png'
 
 type Mode = 'gateway' | 'passenger' | 'admin'
-type AdminTab = 'seats' | 'tours' | 'report'
+type AdminTab = 'seats' | 'tours' | 'bus-types' | 'report'
 
 const ADMIN_TABS: {
   id: AdminTab
@@ -29,6 +30,13 @@ const ADMIN_TABS: {
     icon: Calendar,
     desktopLabel: 'ניהול טיולים ואוטובוסים',
     mobileLabel: 'ניהול טיולים'
+  },
+  {
+    id: 'bus-types',
+    path: '/admin/bus-types',
+    icon: Sliders,
+    desktopLabel: 'ניהול דגמי אוטובוס',
+    mobileLabel: 'דגמי אוטובוס'
   }/*,
   {
     id: 'report',

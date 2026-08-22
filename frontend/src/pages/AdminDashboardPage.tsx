@@ -5,16 +5,18 @@ import { Plus } from 'lucide-react'
 import { useStore } from '../store/store'
 import { tourService } from '../services/tour.service'
 import { busService } from '../services/bus.service'
+import { busTypeService } from '../services/busType.service'
 import { TourModal } from '../modals/TourModal'
 import { BusModal } from '../modals/BusModal'
 import { ConfirmModal } from '../modals/ConfirmModal'
 import { SeatManagement } from '../components/SeatManagement'
 import { TourManagement } from '../components/TourManagement'
+import { BusTypeManagement } from '../components/BusTypeManagement'
 import { PassengerManifestReport } from '../components/PassengerManifestReport'
 import type { Tour } from '../types/tour.types'
 import type { Bus, DriverSide, DoorPosition } from '../types/bus.types'
 
-type AdminTab = 'seats' | 'tours' | 'report'
+type AdminTab = 'seats' | 'tours' | 'bus-types' | 'report'
 
 interface ConfirmState {
   title: string
@@ -25,6 +27,7 @@ interface ConfirmState {
 
 function getActiveTab(pathname: string): AdminTab {
   if (pathname.endsWith('/tours')) return 'tours'
+  if (pathname.endsWith('/bus-types')) return 'bus-types'
   if (pathname.endsWith('/report')) return 'report'
   return 'seats'
 }
@@ -74,6 +77,12 @@ export function AdminDashboardPage() {
       .finally(() => {
         if (active) setIsLoading(false)
       })
+    // Bus-type templates power the "create bus from template" option in
+    // BusModal, so they're loaded alongside the tours rather than only when
+    // the bus-types tab is opened. A failure here only removes that option.
+    busTypeService.query().catch((err) => {
+      console.log('[ADMIN] failed to load bus types', err)
+    })
     return () => {
       active = false
     }
@@ -158,19 +167,26 @@ export function AdminDashboardPage() {
     pickupPoints: string[],
     totalSeats: number,
     driverSide: DriverSide,
-    doorPosition: DoorPosition
+    doorPosition: DoorPosition,
+    busTypeId?: string | null
   ) => {
     if (!busTourId) return
     try {
-      await busService.save(busTourId, {
-        ...(busToEdit ? { id: busToEdit.id } : {}),
-        busName,
-        description,
-        pickupPoints,
-        totalSeats,
-        driverSide,
-        doorPosition
-      })
+      // F11: a bus is created either from a bus-type template (busTypeId) or
+      // from a manual seat count — never both; the service sends exactly one.
+      await busService.save(
+        busTourId,
+        {
+          ...(busToEdit ? { id: busToEdit.id } : {}),
+          busName,
+          description,
+          pickupPoints,
+          totalSeats,
+          driverSide,
+          doorPosition
+        },
+        busTypeId
+      )
       setIsBusModalOpen(false)
       setBusToEdit(null)
       setBusTourId(null)
@@ -199,7 +215,9 @@ export function AdminDashboardPage() {
   }
 
   // Empty state: no tours in the system yet - CTA to create the first tour.
-  const showEmptyState = !isLoading && tours.length === 0
+  // Bus-type templates are independent of tours, so that tab renders even with
+  // an empty tour list (a template is typically defined *before* the first bus).
+  const showEmptyState = !isLoading && tours.length === 0 && activeTab !== 'bus-types'
 
   return (
     <div className="space-y-6" dir="rtl">
@@ -231,6 +249,8 @@ export function AdminDashboardPage() {
               handleDeleteBus={handleDeleteBus}
             />
           )}
+
+          {activeTab === 'bus-types' && <BusTypeManagement />}
 
           {activeTab === 'report' && <PassengerManifestReport isLoading={isLoading} />}
         </>

@@ -6,11 +6,19 @@ import { HttpError } from "../lib/http"
 import { toClientBus, toClientSeat, toPublicSeat } from "../lib/clientShape"
 import { resolveDoc, resolveObjectId } from "../lib/resolveId"
 import { comparePosition } from "../lib/position"
+import { seatLayoutForBusTypeUuid } from "../busType/busType.service"
 
 export interface BusInput {
   name?: string
   seatLayout?: Record<string, unknown>
   pickupPoints?: PickupPoint[]
+  /**
+   * Public uuid of a BusType template to build this bus's seatLayout from
+   * (PRD F11). Mutually exclusive with `seatLayout` on create — see createBus.
+   * Ignored on update: a template only defines the *initial* layout, so an
+   * existing bus's seat map is never remapped by a later template edit.
+   */
+  busTypeId?: string | null
 }
 
 /**
@@ -147,12 +155,32 @@ async function insertBus(
 
 export async function createBus(tourUuid: string, input: BusInput) {
   const tourId = await resolveTourId(tourUuid)
-  if (!input.name || !input.seatLayout) {
-    throw new HttpError(400, "name and seatLayout are required")
+  if (!input.name) {
+    throw new HttpError(400, "name is required")
   }
+
+  // `seatLayout` and `busTypeId` are mutually exclusive (PRD F11): supplying
+  // both is a 400, not a "busTypeId wins" merge, so a caller can never be
+  // unsure which layout was actually used.
+  const hasSeatLayout = input.seatLayout !== undefined && input.seatLayout !== null
+  const hasBusTypeId = input.busTypeId !== undefined && input.busTypeId !== null
+  if (hasSeatLayout && hasBusTypeId) {
+    throw new HttpError(400, "Supply either seatLayout or busTypeId, not both")
+  }
+  if (!hasSeatLayout && !hasBusTypeId) {
+    throw new HttpError(400, "name and either seatLayout or busTypeId are required")
+  }
+
+  // Converting a template is a one-time copy: the resulting bus stores the
+  // generated seatLayout and keeps no reference back to the BusType, so
+  // editing or soft-deleting the template later never touches this bus.
+  const seatLayout = hasBusTypeId
+    ? await seatLayoutForBusTypeUuid(input.busTypeId)
+    : (input.seatLayout as Record<string, unknown>)
+
   // isDefault is never accepted from client input (see BusInput) — only
   // createDefaultBus below can set it.
-  const bus = await insertBus(tourId, input.name, input.seatLayout, input.pickupPoints ?? [], false)
+  const bus = await insertBus(tourId, input.name, seatLayout, input.pickupPoints ?? [], false)
   return toClientBus(bus.toObject(), tourUuid)
 }
 

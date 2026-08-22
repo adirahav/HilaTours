@@ -1,32 +1,32 @@
 {
   "frontend": {
-    "id": "AGE-300",
-    "issueId": "64784317-1c46-468b-b8c7-a2247177fb02",
-    "url": "https://linear.app/agents-example/issue/AGE-300/fe-prepare-the-project-for-production-deploy-add-a-new-stateless"
+    "id": "AGE-306",
+    "issueId": "80999154-0e75-4a97-8d57-62e49994102a",
+    "url": "https://linear.app/agents-example/issue/AGE-306/fe-bustype-management-ניהול-דגמי-אוטובוס-new-bustype-collection-in"
   },
   "userManagementService": {
-    "id": "AGE-301",
-    "issueId": "e8ea973f-6ed4-4a80-8602-72eae5531835",
-    "url": "https://linear.app/agents-example/issue/AGE-301/be-user-management-service-prepare-the-project-for-production-deploy"
+    "id": "AGE-307",
+    "issueId": "7794bd64-7511-432e-ad11-5ea3a2700965",
+    "url": "https://linear.app/agents-example/issue/AGE-307/be-user-management-service-bustype-management-ניהול-דגמי-אוטובוס-new"
   },
   "tourService": {
-    "id": "AGE-302",
-    "issueId": "ef17adaa-fa31-44cf-bdbb-37fb47ca8db2",
-    "url": "https://linear.app/agents-example/issue/AGE-302/be-tour-service-prepare-the-project-for-production-deploy-add-a-new"
+    "id": "AGE-308",
+    "issueId": "b1930669-4897-4a20-9957-aeac6e65bf39",
+    "url": "https://linear.app/agents-example/issue/AGE-308/be-tour-service-bustype-management-ניהול-דגמי-אוטובוס-new-bustype"
   },
   "commonService": {
-    "id": "AGE-303",
-    "issueId": "ab3ff4cf-a603-4933-8a8f-621c99b4dfa1",
-    "url": "https://linear.app/agents-example/issue/AGE-303/be-common-service-prepare-the-project-for-production-deploy-add-a-new"
+    "id": "AGE-309",
+    "issueId": "5333dd3b-367c-4ea1-bc87-31fae6ecae1a",
+    "url": "https://linear.app/agents-example/issue/AGE-309/be-common-service-bustype-management-ניהול-דגמי-אוטובוס-new-bustype"
   },
   "qa": {
-    "id": "AGE-304",
-    "issueId": "16a3e269-c8b3-4a3f-858e-aace47c5e2d5",
-    "url": "https://linear.app/agents-example/issue/AGE-304/qa-prepare-the-project-for-production-deploy-add-a-new-stateless"
+    "id": "AGE-310",
+    "issueId": "81697d22-500a-4f46-a57a-44a87099be04",
+    "url": "https://linear.app/agents-example/issue/AGE-310/qa-bustype-management-ניהול-דגמי-אוטובוס-new-bustype-collection-in"
   },
   "security": {
-    "id": "AGE-305",
-    "issueId": "c713b163-5390-4c62-9fbf-38c17fcc774e",
-    "url": "https://linear.app/agents-example/issue/AGE-305/sec-prepare-the-project-for-production-deploy-add-a-new-stateless"
+    "id": "AGE-311",
+    "issueId": "2dee382d-767c-4089-8fa2-9402ca10adf9",
+    "url": "https://linear.app/agents-example/issue/AGE-311/sec-bustype-management-ניהול-דגמי-אוטובוס-new-bustype-collection-in"
   }
 }

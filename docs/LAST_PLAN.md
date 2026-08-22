@@ -1,69 +1,78 @@
-# 033 — Prepare the project for production deploy: add `common-service` gateway (port 3034)
+# 034 — BusType management: new `busType` collection in tour-service
 
-Status: active
+Status: draft
 Owner: orchestrator
-Last updated: 2026-08-14
-Scope-Agents: frontend, tour-service, user-management-service, common-service, qa
+Last updated: 2026-08-22
+Scope-Agents: frontend, tour-service, qa, security
 
 ## Goal
-Make `common-service` (port 3034) the single public-facing web service in production: it serves the built frontend as static files and reverse-proxies `/api/auth`, `/api/forgot-password`, `/api/role`, `/api/permission` to `user-management-service`, and `/api/tour`, `/api/bus`, `/api/seat`, `/api/manifest` to `tour-service`. Both business services become private/internal with no code changes of their own. The frontend's `BASE_URL` resolves to a single `/api/` prefix in production, and the Vite build outputs directly into `common-service`'s static folder.
+Let admins define reusable bus-type templates (standard row count, door-row position, back-row seat count, individually disabled seat slots) independent of any tour/bus, manage them (create/edit/duplicate/soft-delete/mark-default), and instantiate a concrete `Bus.seatLayout` from a template when creating a bus — per PRD F11 and the design reference `raw_from_ai_studio/src/components/BusTypeManagement.tsx`.
 
 ## Scope
-- `backend/common-service/` (new): stateless Express gateway — no database, no business logic. Health check, proxy middleware, static file serving, SPA fallback. Per `agents/backend/CLAUDE.md` Steps 1-6.
-- `frontend/src/services/http.service.ts`: `BASE_URL` resolves to `/api/` in production, keeps existing per-service dev URLs in development.
-- `frontend/vite.config.ts`: build `outDir` set to `../backend/common-service/public`, `emptyOutDir: true`.
-- `backend/user-management-service/` and `backend/tour-service/`: NO code changes — they keep running as-is; only their reachability model changes (internal-only in production), which is an infra/env concern, not code.
-- No new UI screens, no new product API endpoints.
+- `backend/tour-service/api/models/busType.model.ts` (new): uuid identity + soft-delete Mongoose model.
+- `backend/tour-service/api/busType/busType.service.ts`, `busType.controller.ts`, `busType.routes.ts` (new): CRUD + duplicate, mirroring `backend/tour-service/api/bus/*` conventions (`resolveObjectId`/`resolveDoc`, `toClientX` shaping, `requirePermission`).
+- `backend/tour-service/api/bus/bus.service.ts`: extend `BusInput`/`createBus` to accept an optional `busTypeId`, resolving the template and server-generating `seatLayout` (new helper, e.g. `seatLayoutFromBusType`) instead of requiring the caller to pass `seatLayout` directly. Existing explicit-`seatLayout` callers keep working unchanged.
+- `backend/tour-service/api/app.ts`: mount new `busTypeRouter` alongside `busRouter`.
+- `docs/api-contract/api-contract.tour-service.yaml`: add `/busType`, `/busType/{busTypeId}`, `/busType/{busTypeId}/duplicate` paths and `BusType`/`BusTypeInput` schemas; extend `BusInput` with optional `busTypeId`.
+- `frontend/src/types/busType.types.ts` (new), `frontend/src/services/busType.service.ts` (new), `frontend/src/store/slices/busType.slice.ts` (new) — following the existing `bus.types.ts`/`bus.slice.ts` pattern.
+- `raw_from_ai_studio/src/components/BusTypeManagement.tsx` → adapted into `frontend/src/components/admin/BusTypeManagement.tsx` (exact target path to confirm with `ui-component-layer`/`page-layer` skill conventions during implementation): remove `lib/storage` (localStorage) and `data/initialData` usage, wire to the new store slice/service instead.
+- Bus-creation UI (wherever "add bus" lives, e.g. `BusManagement`/tour admin tab): add a "create from BusType" path that sends `busTypeId` instead of a hand-built `seatLayout`.
+- No changes to `user-management-service` or `common-service`.
 
 ## Assumptions
-- `common-service` has no models, no auth of its own, no secrets beyond upstream service URLs — per `agents/backend/CLAUDE.md`.
-- `http-proxy-middleware` is the proxy library to use, matching the CLAUDE.md-specified snippet.
-- Local dev continues to run all three services separately (3032/3033/3034); `common-service` is only mandatory for production/staging.
-- No Figma/design reference is relevant — this is a pure infra/deploy task, not a UI task.
+- `busType` is its own top-level Mongo collection (not embedded in `Tour`/`Bus`), matching "independent of any tour/bus instance" in the backlog item.
+- Permissions follow the existing `bus:*` convention — new permissions `busType:view`/`busType:insert`/`busType:update`/`busType:delete` are added the same way `bus:*` permissions were (per `jwt-middleware-layer`/RBAC work in plan 032); default admin role gets them.
+- `seatLayout` generation from a template reuses the existing standard-rows + back-row + door-row + disabled-slots model shown in `BusTypeManagement.tsx`'s `generateNumberedGrid`, translated into the `{ positions: string[] }` shape already consumed by `seatPositionsFromLayout` in `bus.service.ts` — no new seatLayout shape is introduced, just a new generator that outputs the shape `Bus` already expects.
+- Duplicate is a server-side action (`POST /busType/:busTypeId/duplicate`), not just a frontend clone, so duplicated templates are persisted immediately and show up for other admins.
+- "Mark as default" is a boolean flag on `BusType` with at most one true at a time (service enforces exclusivity on write), used only as a UI default-selection hint — it does not affect `Bus` creation validation.
 
 ## Open Questions
-1. Should `common-service` also get a minimal proxy-level request timeout/retry policy, or is default `http-proxy-middleware` behavior acceptable for v1?
-- Recommended: accept default behavior for v1; add timeout/retry tuning later only if production traffic reveals a need — keeps this ticket scoped to what CLAUDE.md specifies.
-- *HUMAN ANSWER:* as recommended
+1. Should `busTypeId` + `seatLayout` be mutually exclusive on `POST /tour/:tourId/buses`, or can both be supplied (with `busTypeId` taking precedence)?
+- Recommended: mutually exclusive — reject a request that supplies both with a 400, to avoid ambiguous "which one wins" behavior and keep the contract simple.
 
-2. Do we need CI/deploy pipeline changes (e.g. a root-level script that builds frontend then starts `common-service`) as part of this ticket, or is that a separate ops ticket?
-- Recommended: out of scope for this ticket; this plan only covers the application code (gateway service + frontend build target), not hosting-platform/CI wiring, since the backlog item doesn't mention CI.
-- *HUMAN ANSWER:* as recommended
+2. Does deleting (soft-delete) a `BusType` need to block if buses were created from it, or is it fine since conversion is a one-time copy with no live reference kept?
+- Recommended: no reference is kept after conversion (the template is copied into a concrete `seatLayout` at creation time), so soft-deleting a `BusType` never needs to touch existing buses — allow free deletion.
+
+3. Where exactly should the adapted `BusTypeManagement.tsx` live and which admin tab surfaces it — a new sub-tab under "Tour & Bus Management," or its own top-level tab?
+- Recommended: new sub-tab nested under the existing "Tour & Bus Management" tab (per PRD's own placement of "Bus type management" as a bullet under that tab), not a new top-level tab — avoids restructuring the admin dashboard's tab bar for this ticket.
 
 ## Steps
-1. **backend/common-service/** (backend agent, service=`common-service`, port=3034, no API contract):
-   - Scaffold `package.json`, `tsconfig.json` per `agents/backend/CLAUDE.md` Step 2 (no mongoose/bcrypt/jsonwebtoken; add `http-proxy-middleware`).
-   - `api/server.ts`: mount in order — `GET /health` (200, no auth, no proxy) → CORS (`origin: process.env.FRONTEND_URL`) → proxy `/api/tour`, `/api/bus`, `/api/seat`, `/api/manifest` → `TOUR_SERVICE_URL` **with `pathRewrite` prefixing `/tour-service`** (its real routes are mounted at `/tour-service/api/...`, confirmed in `backend/tour-service/api/app.ts` — plain `/api/...` 404s) → proxy `/api/auth`, `/api/forgot-password`, `/api/role`, `/api/permission` → `USER_MANAGEMENT_SERVICE_URL` **with `pathRewrite` prefixing `/user-management-service`** (same convention, confirmed in `backend/user-management-service/api/server.ts`) → `express.static('../public')` → SPA fallback `GET *` → `index.html`.
-   - `package.json` `start` script: `node dist/server.js`.
-   - Do not commit `public/` (gitignored — generated by frontend build).
-   - Env: ask for/reuse `TOUR_SERVICE_URL`, `USER_MANAGEMENT_SERVICE_URL`, `FRONTEND_URL`; create the example env template plus the local development env file (per `agents/backend/CLAUDE.md` Step 5) with `PORT=3034`.
-2. **frontend/src/services/http.service.ts** (frontend agent):
-   - Update `BASE_URL` resolution: production → `/api/`; development → keep existing `VITE_USER_MANAGEMENT_API_URL` / `VITE_TOUR_API_URL`-based behavior (per `agents/frontend/CLAUDE.md` Step 8.1).
-3. **frontend/vite.config.ts** (frontend agent):
-   - Set `build.outDir: '../backend/common-service/public'`, `build.emptyOutDir: true`.
-   - Confirm `package.json` has `"build": "vite build"` (should already exist from scaffold).
-4. **backend/user-management-service/** and **backend/tour-service/**: no changes — confirmed out of scope for code edits. (Included in Scope-Agents only because the plan's Risks section below flags an auth/reachability risk that a reviewer must sign off on, not because code changes here.)
+1. **backend/tour-service — model** (tour-service agent):
+   - `backend/tour-service/api/models/busType.model.ts`: fields `name`, `description?`, `standardRowsCount`, `doorRow: number | null`, `backRowSeatsCount`, `disabledSeatSlots: string[]`, `isDefault: boolean`, plus uuid identity (`applyUuidIdentity`) and soft-delete (`deletedAt`) exactly like `bus.model.ts`. Store in its own `busType` collection.
+2. **backend/tour-service — service/controller/routes** (tour-service agent):
+   - `busType.service.ts`: `listBusTypes`, `getBusType`, `createBusType`, `updateBusType`, `softDeleteBusType`, `duplicateBusType`, `setDefaultBusType` (enforces single-default), and `seatLayoutFromBusType(busType)` — the row/door/back-row/disabled-slot → `{ positions: [...] }` generator, unit-testable in isolation.
+   - `busType.controller.ts` + `busType.routes.ts`: REST endpoints under `requirePermission("busType:*")`, mirroring `bus.routes.ts` structure; `GET /busType` and `GET /busType/:busTypeId` open to any authenticated admin (`busType:view`), mutations gated per-permission.
+   - `app.ts`: `app.use(API_BASE, busTypeRouter)`.
+3. **backend/tour-service — bus creation conversion** (tour-service agent):
+   - Extend `BusInput` in `bus.service.ts` with optional `busTypeId`; in `createBus`, if `busTypeId` present, resolve the `BusType` doc, call `seatLayoutFromBusType`, and use that as `seatLayout` (rejecting if both `busTypeId` and `seatLayout` are supplied, per Open Question 1's recommendation).
+4. **docs/api-contract/api-contract.tour-service.yaml** (tour-service agent):
+   - Add `BusType`/`BusTypeInput` schemas and `/busType`, `/busType/{busTypeId}`, `/busType/{busTypeId}/duplicate` paths; add optional `busTypeId` to `BusInput`.
+5. **frontend/src/types/busType.types.ts, services/busType.service.ts, store/slices/busType.slice.ts** (frontend agent):
+   - Mirror `bus.types.ts`/`bus.service.ts`/`bus.slice.ts` conventions (uuid-keyed, async thunks/actions for list/create/update/delete/duplicate).
+6. **frontend/src/components/admin/BusTypeManagement.tsx** (frontend agent, adapted from `raw_from_ai_studio/src/components/BusTypeManagement.tsx`):
+   - Remove `lib/storage` (`getBusTypes`/`saveBusTypes`/`addBusType`/`editBusType`/`deleteBusType`) and `data/initialData` (`INITIAL_BUS_TYPES`) imports/usage entirely.
+   - Replace with calls into the new `busType.slice.ts`/`busType.service.ts`; "reset to presets" either becomes a no-op removed from the UI or maps to a documented server-seeded default set — flag as an assumption if reused, since PRD/backlog don't mention seeded presets.
+   - Keep the existing grid/door/back-row visual builder and RTL layout as-is (design source of truth); only the persistence layer changes.
+   - Wire into the "Tour & Bus Management" tab per Open Question 3's recommendation.
+7. **Bus-creation UI** (frontend agent): add a "create from BusType" option (dropdown of existing templates) that submits `busTypeId` instead of hand-authored `seatLayout`.
+8. **security** (security agent): review the new `busType:*` permission wiring, confirm mutation routes reject non-admin JWTs, and confirm soft-delete/`deletedAt` scoping matches `bus.model.ts`'s pattern (no leaked deleted templates via list endpoints).
 
 ## Validation
-- `backend/common-service`: `npm --prefix backend/common-service run test` — 100% pass, covering:
-  - `GET /health` → 200, no auth
-  - Request to `/api/tour/*` proxied to `TOUR_SERVICE_URL` (mocked upstream)
-  - Request to `/api/auth/*` proxied to `USER_MANAGEMENT_SERVICE_URL` (mocked upstream)
-  - Unmatched non-API route falls through to SPA `index.html`
-- `frontend`: `npm --prefix frontend run lint` and `npm --prefix frontend run build` both pass; verify build output lands in `backend/common-service/public/`.
-- Manual/integration: with all three services running locally (env vars pointing `common-service` at `localhost:3032`/`3033`), hit `common-service:3034` for login, tour list, and a static asset, confirming each round-trips through the proxy correctly.
+- `backend/tour-service`: `npm --prefix backend/tour-service run test` covering `busType.service.ts` CRUD, duplicate, default-exclusivity, `seatLayoutFromBusType` grid generation (including door-row and disabled-slot edge cases), and `createBus` with `busTypeId` vs. explicit `seatLayout` vs. both-supplied (400).
+- `frontend`: `npm --prefix frontend run lint` and existing test runner (if configured) for the new slice/service and adapted component; manually confirm no `localStorage` reads/writes remain in `BusTypeManagement.tsx`.
+- Manual: create a `BusType`, instantiate a `Bus` from it via the admin UI, confirm the resulting seat map matches the template's visual preview (row/door/back-row/disabled slots).
 
 ## Risks
-- **Auth boundary shift**: `user-management-service` and `tour-service` become internal-only in production; if their CORS (`FRONTEND_URL`) or firewall rules aren't updated to reflect "only `common-service` calls me," they could remain publicly reachable, undermining the point of the gateway. This is an env/infra concern but must be flagged to whoever owns deployment — not a code change in this ticket, hence no code edits to those two services, but their behavior/config posture is directly implicated.
-- **Static/API route collision**: if the frontend ever adds a route or asset path starting with `/api/`, it would collide with the proxy paths. Mitigated by proxy routes being registered before the static/SPA fallback, and by the existing `/api/` prefix convention already used for all backend calls.
-- **Stale build artifacts**: `emptyOutDir: true` wipes `backend/common-service/public/` on every build — acceptable since that folder is gitignored and generated, but must not be relied upon to persist between deploys without a fresh build step.
-- **JWT validation across proxy**: `tour-service` validates JWTs issued by `user-management-service` directly (shared `JWT_SECRET`, unchanged) — the proxy is transparent to auth headers as long as `http-proxy-middleware` forwards headers by default (it does), so no header-stripping risk expected, but should be explicitly verified in Validation.
+- **Auth/permission gap**: new mutation endpoints (`create`/`update`/`delete`/`duplicate`/`setDefault`) must be gated the same way `bus:*` routes are, or an authenticated-but-unprivileged user could create/delete shared templates used across tours — flagged for the security agent (Scope-Agents includes `security`).
+- **seatLayout translation mismatch**: the door-row/back-row grid model in `BusTypeManagement.tsx` must translate faithfully into the `{ positions: [...] }` shape `bus.service.ts` already parses (`seatPositionsFromLayout`) — a subtle off-by-one in row/seat numbering here would silently produce a wrong-sized or misaligned seat map on the resulting `Bus`, only caught by comparing generated total seats against the live preview's `calculateTotalSeatsFromLayout` equivalent.
+- **Default-template race**: enforcing "only one `isDefault: true`" needs to be atomic (e.g. unset-then-set in one operation or a transaction) to avoid two concurrent admin edits leaving two templates marked default.
 
 ## Rollout Order
-1. `backend/common-service` (backend agent) — new gateway service, independently testable via mocked upstreams.
-2. `frontend` (frontend agent) — `BASE_URL` + `vite.config.ts` changes, buildable independently of `common-service` being live.
-3. `qa` — validate end-to-end proxy behavior once both are done, ideally with all three services running together.
+1. `tour-service` (backend agent) — model, service/controller/routes, bus-creation conversion, API contract update. Independently testable via unit tests before any frontend change.
+2. `frontend` (frontend agent) — types/service/slice, adapted `BusTypeManagement.tsx`, bus-creation "from template" option. Depends on step 1's routes existing (or can be stubbed against the contract in parallel, then wired once live).
+3. `security` — review permission wiring and soft-delete scoping once both sides are in place.
+4. `qa` — end-to-end validation: create template → create bus from template → confirm seat map.
 
 ## Rollback
-- `backend/common-service` is a new, additive directory — rollback is deleting/reverting the directory and its git history entry with no impact on `user-management-service` or `tour-service`.
-- `frontend` changes are two small, isolated edits (`http.service.ts` `BASE_URL`, `vite.config.ts` `outDir`) — revert via git if production issues arise; development-mode behavior (`VITE_*_API_URL`) is unaffected by either change, so local dev is not at risk during rollback.
+- All new backend code is additive (`busType.model.ts`, `busType.service/controller/routes.ts`, one optional field on `BusInput`) — revert via git with no impact on existing `bus`/`tour`/`seat` flows, since `busTypeId` is optional and existing explicit-`seatLayout` bus creation is untouched.
+- Frontend changes are additive (new types/service/slice files, one adapted component, one new option in bus-creation UI) — revert via git; no existing admin flows are removed, only extended.

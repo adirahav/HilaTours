@@ -11,6 +11,7 @@ import {
   ArrowDown
 } from 'lucide-react'
 import type { Bus, DriverSide, DoorPosition } from '../types/bus.types'
+import { useStore } from '../store/store'
 import { cn } from '../lib/utils'
 
 interface BusModalProps {
@@ -22,7 +23,11 @@ interface BusModalProps {
     pickupPoints: string[],
     totalSeats: number,
     driverSide: DriverSide,
-    doorPosition: DoorPosition
+    doorPosition: DoorPosition,
+    // F11: when a bus type template is chosen, the server generates the
+    // seatLayout from it. Null means "use the manual seat count" — the two are
+    // mutually exclusive on the API, so exactly one of them is ever sent.
+    busTypeId?: string | null
   ) => void
   busToEdit?: Bus | null
 }
@@ -44,11 +49,18 @@ export function BusModal({ isOpen, onClose, onSave, busToEdit }: BusModalProps) 
   const [pickupPoints, setPickupPoints] = useState<string[]>([])
   const [newPickup, setNewPickup] = useState('')
   const [totalSeats, setTotalSeats] = useState<number>(DEFAULT_SEATS)
+  const [busTypeId, setBusTypeId] = useState<string | null>(null)
   const [draggedIndex, setDraggedIndex] = useState<number | null>(null)
   const [dragOverIndex, setDragOverIndex] = useState<number | null>(null)
   const [nameError, setNameError] = useState('')
   const [pickupError, setPickupError] = useState('')
   const [seatsError, setSeatsError] = useState('')
+
+  // Templates are loaded into the store by the admin dashboard. They only
+  // apply when creating a bus — editing never remaps an existing seat map.
+  const busTypes = useStore((state) => state.busTypes)
+  const canUseBusType = !busToEdit && busTypes.length > 0
+  const selectedBusType = busTypes.find((t) => t.id === busTypeId) ?? null
 
   const titleId = useId()
   const nameErrorId = useId()
@@ -71,17 +83,20 @@ export function BusModal({ isOpen, onClose, onSave, busToEdit }: BusModalProps) 
       setDescription(busToEdit.description || '')
       setPickupPoints([...busToEdit.pickupPoints])
       setTotalSeats(busToEdit.totalSeats || DEFAULT_SEATS)
+      setBusTypeId(null)
     } else {
       setBusName('')
       setDescription('')
       setPickupPoints([])
       setTotalSeats(DEFAULT_SEATS)
+      // Preselect the template marked as default, if one exists.
+      setBusTypeId(busTypes.find((t) => t.isDefault)?.id ?? null)
     }
     setNewPickup('')
     setNameError('')
     setPickupError('')
     setSeatsError('')
-  }, [busToEdit, isOpen, minSeats])
+  }, [busToEdit, isOpen, minSeats, busTypes])
 
   // Initial focus on the name input when opened.
   useEffect(() => {
@@ -180,12 +195,21 @@ export function BusModal({ isOpen, onClose, onSave, busToEdit }: BusModalProps) 
       hasError = true
     }
     // Q6: block reducing the seat count below already-occupied seat numbers.
-    if (totalSeats < minSeats) {
+    // Irrelevant when a template is used — that path only exists on create.
+    if (!selectedBusType && totalSeats < minSeats) {
       setSeatsError(`לא ניתן להפחית את מספר המושבים מתחת ל-${minSeats} (קיימים מושבים תפוסים)`)
       hasError = true
     }
     if (hasError) return
-    onSave(trimmedName, description.trim(), pickupPoints, totalSeats, DRIVER_SIDE, DOOR_POSITION)
+    onSave(
+      trimmedName,
+      description.trim(),
+      pickupPoints,
+      selectedBusType ? selectedBusType.totalSeats : totalSeats,
+      DRIVER_SIDE,
+      DOOR_POSITION,
+      selectedBusType ? selectedBusType.id : null
+    )
     onClose()
   }
 
@@ -276,7 +300,42 @@ export function BusModal({ isOpen, onClose, onSave, busToEdit }: BusModalProps) 
             />
           </div>
 
-          <div>
+          {canUseBusType && (
+            <div>
+              <label
+                htmlFor={`${titleId}-bus-type`}
+                className="block text-xs font-bold text-slate-700 mb-1"
+              >
+                יצירה מדגם אוטובוס (תבנית):
+              </label>
+              <select
+                id={`${titleId}-bus-type`}
+                value={busTypeId ?? ''}
+                onChange={(e) => {
+                  setBusTypeId(e.target.value || null)
+                  setSeatsError('')
+                }}
+                className={inputClass}
+              >
+                <option value="">ללא תבנית - בחירת גודל ידנית</option>
+                {busTypes.map((busType) => (
+                  <option key={busType.id} value={busType.id}>
+                    {busType.name} ({busType.totalSeats} מושבים)
+                    {busType.isDefault ? ' - ברירת מחדל' : ''}
+                  </option>
+                ))}
+              </select>
+              {selectedBusType && (
+                <p className="text-[11px] text-slate-500 mt-1">
+                  מפת המושבים תיווצר לפי התבנית: {selectedBusType.totalSeats} מושבים,{' '}
+                  {selectedBusType.standardRowsCount} שורות
+                  {selectedBusType.doorRow ? `, דלת בשורה ${selectedBusType.doorRow}` : ', ללא דלת אמצעית'}.
+                </p>
+              )}
+            </div>
+          )}
+
+          <div className={cn(selectedBusType && 'hidden')}>
             <div className="flex items-center justify-between mb-1">
               <span id={`${titleId}-seats-label`} className="block text-xs font-bold text-slate-700">
                 גודל האוטובוס:

@@ -4,6 +4,26 @@ import userEvent from '@testing-library/user-event'
 import { BusModal } from './BusModal'
 import type { Bus } from '../types/bus.types'
 import type { Seat, SeatStatus } from '../types/seat.types'
+import type { BusType } from '../types/busType.types'
+import { useStore } from '../store/store'
+
+const busTypeFixture = (
+  id: string,
+  name: string,
+  totalSeats: number,
+  isDefault: boolean
+): BusType => ({
+  id,
+  name,
+  description: '',
+  totalSeats,
+  standardRowsCount: 13,
+  doorRow: 7,
+  backRowSeatsCount: 5,
+  disabledSeatSlots: [],
+  isDefault,
+  createdAt: '2026-08-01'
+})
 
 const toastMock = vi.hoisted(() => ({
   error: vi.fn(),
@@ -38,6 +58,45 @@ describe('BusModal', () => {
   beforeEach(() => {
     toastMock.error.mockClear()
     toastMock.success.mockClear()
+    // Bus type templates are global store state — reset so tests that expect
+    // the manual seat-count path don't inherit another test's templates.
+    useStore.setState({ busTypes: [] })
+  })
+
+  it('offers bus type templates on create, preselects the default one and reports it to onSave', async () => {
+    useStore.setState({
+      busTypes: [
+        busTypeFixture('bt1', 'דגם 55', 55, false),
+        busTypeFixture('bt2', 'דגם 49', 49, true)
+      ]
+    })
+    const user = userEvent.setup()
+    const onSave = vi.fn()
+    render(<BusModal isOpen onClose={() => {}} onSave={onSave} />)
+
+    const select = screen.getByLabelText(/יצירה מדגם אוטובוס/) as HTMLSelectElement
+    expect(select.value).toBe('bt2')
+
+    await user.type(screen.getByLabelText(/שם\/מזהה האוטובוס/), 'אוטובוס מתבנית')
+    await user.click(screen.getByRole('button', { name: 'שמור אוטובוס' }))
+
+    // The template's own seat count is reported, and its id is passed so the
+    // server generates the seatLayout instead of the client sending one.
+    expect(onSave).toHaveBeenCalledWith(
+      'אוטובוס מתבנית',
+      '',
+      [],
+      49,
+      'left',
+      'front',
+      'bt2'
+    )
+  })
+
+  it('does not offer templates when editing an existing bus — layouts are never remapped', () => {
+    useStore.setState({ busTypes: [busTypeFixture('bt1', 'דגם 55', 55, true)] })
+    render(<BusModal isOpen onClose={() => {}} onSave={() => {}} busToEdit={editBus} />)
+    expect(screen.queryByLabelText(/יצירה מדגם אוטובוס/)).not.toBeInTheDocument()
   })
 
   it('renders nothing when closed', () => {
@@ -138,7 +197,9 @@ describe('BusModal', () => {
       ['תל אביב'],
       55,
       'left',
-      'front'
+      'front',
+      // F11: no bus type template selected, so the manual seat count is used.
+      null
     )
     expect(onClose).toHaveBeenCalled()
   })

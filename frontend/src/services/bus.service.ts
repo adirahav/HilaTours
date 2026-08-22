@@ -7,17 +7,27 @@ import { mapBus, mapAdminBus, type RawBus } from '../lib/tourMapper'
 // the frontend's `busName`/`totalSeats` — and has no `driverSide`/
 // `doorPosition` at all (those are frontend-only display concepts, never
 // persisted). Translate before sending, never forward the frontend shape.
-function toBusInput(bus: Partial<Bus>) {
+//
+// `seatLayout` and `busTypeId` are mutually exclusive (F11): supplying both —
+// or neither — is a 400. When a BusType template is chosen, send only
+// `busTypeId` and let the server generate the layout from the template.
+function toBusInput(bus: Partial<Bus>, busTypeId?: string | null) {
+  const pickupPoints = (bus.pickupPoints ?? []).map((name, order) => ({ name, order }))
+  if (busTypeId) {
+    return { name: bus.busName, busTypeId, pickupPoints }
+  }
   return {
     name: bus.busName,
     seatLayout: { positions: Array.from({ length: bus.totalSeats ?? 52 }, (_, i) => String(i + 1)) },
-    pickupPoints: (bus.pickupPoints ?? []).map((name, order) => ({ name, order }))
+    pickupPoints
   }
 }
 
 export const busService = {
-  async save(tourId: string, bus: Partial<Bus>): Promise<Bus> {
-    const payload = toBusInput(bus)
+  async save(tourId: string, bus: Partial<Bus>, busTypeId?: string | null): Promise<Bus> {
+    // A template only defines the initial layout at creation time — editing an
+    // existing bus never re-sends busTypeId, so its seat map is never remapped.
+    const payload = toBusInput(bus, bus.id ? null : busTypeId)
     const raw = bus.id
       ? await httpService.put<RawBus>(tourClient, `/tour/${tourId}/buses/${bus.id}`, payload)
       : await httpService.post<RawBus>(tourClient, `/tour/${tourId}/buses`, payload)
