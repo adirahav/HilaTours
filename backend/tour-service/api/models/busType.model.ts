@@ -3,9 +3,16 @@ import { applyUuidIdentity } from "../lib/clientShape"
 
 /**
  * A reusable bus layout template (PRD F11), independent of any tour or bus
- * instance. Instantiating a Bus from a BusType converts the template into a
- * concrete `Bus.seatLayout` once — no reference is kept afterwards, so editing
- * or soft-deleting a template never retroactively changes existing buses.
+ * instance. Instantiating a Bus from a BusType seeds its `Bus.seatLayout` AND
+ * stores a live `Bus.busTypeId` reference back here (plan 037).
+ *
+ * That reference is live, not a snapshot: editing this template DOES
+ * retroactively change the rendered seat map of every bus referencing it (the
+ * admin UI warns before saving such an edit, it does not block it). This is
+ * deliberate — it is the only way a mid-row gap stays representable, since a
+ * bus's flat `seatLayout.positions` cannot encode one. Soft-deleting a template
+ * hides it from the picker but must never break those buses, so the render join
+ * resolves soft-deleted templates too.
  *
  * Design source: raw_from_ai_studio/src/components/BusTypeManagement.tsx.
  */

@@ -60,7 +60,8 @@
 - `uuid` — String (auto-generated, unique, indexed — this is the `id` clients see)
 - `tourId` — ObjectId, ref: 'Tour', required
 - `name` — String, required (e.g. "Bus 1")
-- `seatLayout` — Object, required (rows/columns or explicit seat map definition — exact shape TBD, see Open Questions)
+- `seatLayout` — Object, required (rows/columns or explicit flat seat-position list — `{positions: string[]}` or `{rows, columns}`; unchanged by plan 036).
+- `busTypeId` — ObjectId, ref: 'BusType', default: null. Persisted (not just a transient create/update input) so the bus's rendered seat grid can be derived live by joining back to the `BusType` document — see plan 036 (2026-08-22). This lookup must NOT filter out soft-deleted `BusType`s (a bus referencing a soft-deleted template must keep resolving it correctly — soft-delete only hides a template from the admin's create/edit picker, per glossary.md). **Editing a `BusType` retroactively changes the rendered seat map of every bus whose `busTypeId` references it** (deliberate, human-approved 2026-08-22 — the grid is always derived live, never snapshotted; the admin UI warns before saving an edit to an in-use template, but does not block it). `null` for manually-configured buses (raw `seatLayout`, no template).
 - `pickupPoints` — [{ `name`: String, `order`: Number }], required — pickup points belong to the bus, not the tour (per `glossary.md`)
 - `createdAt` — Date, default: Date.now
 - `deletedAt` — Date, default: null (soft delete)
@@ -78,7 +79,7 @@
 - `createdAt` — Date, default: Date.now
 - `deletedAt` — Date, default: null (soft delete)
 
-> Independent of `tour`/`bus` — a `busType` is a design-time template only. Instantiating a `bus` from a `busType` (`busTypeId` on the bus-create request) generates that bus's `seatLayout` once, at creation time; the two are never linked afterwards, so editing/deleting a `busType` never touches buses already created from it. `totalSeats` is not stored — it's derived from the layout fields and recomputed on every read/write, never trusted from the client.
+> **Superseded 2026-08-22 by plan 036** — a `busType` is a design-time template, but a `bus` instantiated from one KEEPS a live link (`bus.busTypeId`, see `bus` collection below): the bus's rendered seat grid (row/col, including gaps) is derived by joining back to the current `BusType` document, not frozen at creation time. Editing a `BusType` DOES retroactively change the rendered seat map of every bus that references it (the admin UI warns before saving such an edit, but does not block it). Soft-deleting a `BusType` does NOT break buses that reference it — the join must resolve soft-deleted templates too, it just stops appearing in the admin's create/edit picker. `totalSeats` is not stored — it's derived from the layout fields and recomputed on every read/write, never trusted from the client.
 
 ### seat  *(owned by `tour-service`)*
 - `_id` — ObjectId (auto-generated, internal only — never sent to clients)

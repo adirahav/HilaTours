@@ -107,6 +107,61 @@ components:
             Either `{ positions: string[] }` / `{ seats: string[] }` (explicit
             seat-position list), or `{ rows: number, columns: number | string[] }`
             (grid — columns default to A, B, C... when given as a count).
+        busTypeId:
+          type: string
+          format: uuid
+          nullable: true
+          description: >
+            Persisted (not just a create/update input) — the BusType this bus
+            was instantiated from, if any. The rendered seat grid (row/col,
+            including any gaps from `disabledSeatSlots`) is derived by joining
+            back to the current BusType document, NOT frozen at creation time —
+            editing that BusType later retroactively changes this bus's
+            rendered seat map (see plan 036, 2026-08-22). Resolves correctly
+            even if the referenced BusType has since been soft-deleted. `null`
+            for a bus configured with a manual `seatLayout` (no template).
+        busTypeGrid:
+          type: object
+          nullable: true
+          description: >
+            The referenced BusType's LIVE grid, resolved server-side at read
+            time and embedded here so no caller needs a second (authenticated)
+            fetch of /busType — passengers never authenticate, so a
+            client-side join is not an option, and duplicating the numbering
+            algorithm client-side is the exact drift this fix exists to
+            prevent.
+
+            Null whenever `busTypeId` is null. Non-null even when the
+            referenced BusType has been soft-deleted (the render join
+            deliberately ignores `deletedAt`), so deleting a template never
+            breaks an existing bus's seat map.
+
+            Consumers render the grid as: `standardRowsCount` rows of 4
+            columns, minus cols 3-4 of `doorRow`, minus every
+            `disabledSeatSlots` entry; then a final bench row (index
+            `standardRowsCount + 1`) of `backRowSeatsCount` columns, again
+            minus its disabled slots.
+          properties:
+            standardRowsCount:
+              type: integer
+              example: 4
+            doorRow:
+              type: integer
+              nullable: true
+              example: 3
+            backRowSeatsCount:
+              type: integer
+              example: 4
+            disabledSeatSlots:
+              type: array
+              items:
+                type: string
+              description: >
+                `"row-col"` keys with no seat. These are the GAPS — the whole
+                point of this field. A flat `seatLayout.positions` list cannot
+                express "seat, empty slot, seat" within one row, which is why
+                a mid-row gap used to render as packed consecutive seats.
+              example: ["5-3"]
         pickupPoints:
           type: array
           items:
@@ -157,8 +212,12 @@ components:
         A reusable bus layout template (grid of standard rows, a door-row
         position, a back bench row, and individually disabled seat slots),
         independent of any tour/bus instance. Instantiating a Bus from a
-        BusType converts it into a concrete `seatLayout` — editing a BusType
-        afterwards never retroactively changes buses already created from it.
+        BusType converts it into a concrete `seatLayout` AND stores a
+        permanent `Bus.busTypeId` reference. The rendered seat grid is joined
+        live to this document at read time, so editing a BusType DOES
+        retroactively change the seat map of every bus already created from it
+        (2026-08-22 product decision — the admin UI warns before saving such
+        an edit, using `busCount` below, but never blocks it).
         Design source: raw_from_ai_studio/src/components/BusTypeManagement.tsx.
       properties:
         id:
@@ -195,6 +254,16 @@ components:
         isDefault:
           type: boolean
           default: false
+        busCount:
+          type: integer
+          readOnly: true
+          description: >
+            Number of non-deleted buses currently referencing this template
+            via `Bus.busTypeId`. Server-computed, never accepted on write.
+            Drives the admin editor's "in use by N buses — saving changes
+            their seat maps immediately" warning. Clients treat an omitted
+            value as 0 (warning hidden) rather than guessing.
+          example: 3
         createdAt:
           type: string
           format: date-time
@@ -202,7 +271,11 @@ components:
           type: string
           format: date-time
           nullable: true
-          description: Soft-delete timestamp. Null means the bus type is active.
+          description: >
+            Soft-delete timestamp. Null means the bus type is active. A
+            soft-deleted template disappears from GET /busType (the admin
+            picker) but is STILL resolved by the seat-grid render join, so
+            buses created from it keep rendering correctly.
 
     BusTypeInput:
       type: object
@@ -274,6 +347,32 @@ components:
           example: "3A"
         status:
           $ref: '#/components/schemas/SeatStatus'
+        row:
+          $ref: '#/components/schemas/SeatGridRow'
+        col:
+          $ref: '#/components/schemas/SeatGridCol'
+
+    SeatGridRow:
+      type: integer
+      nullable: true
+      description: >
+        1-based grid row this seat occupies, resolved server-side from the
+        bus's live BusType (see `Bus.busTypeGrid`). Omitted/null for a bus
+        with no template, where the client falls back to its generic layout.
+
+        Structural only — a coordinate, not passenger data — so this is safe
+        on the PII-free public projection and does not reopen SEV-001. It is
+        added to `PublicSeat` explicitly, NOT by widening the public seat
+        projection to admin fields.
+      example: 5
+
+    SeatGridCol:
+      type: integer
+      nullable: true
+      description: >
+        1-based grid column, paired with `row`. Both are always supplied
+        together; a half-supplied pair is treated by clients as absent.
+      example: 4
 
     Seat:
       type: object
@@ -295,6 +394,10 @@ components:
           example: "3A"
         status:
           $ref: '#/components/schemas/SeatStatus'
+        row:
+          $ref: '#/components/schemas/SeatGridRow'
+        col:
+          $ref: '#/components/schemas/SeatGridCol'
         pickupPointName:
           type: string
           nullable: true
@@ -661,8 +764,13 @@ paths:
       tags: [BusType]
       summary: Update a bus type template
       description: >
-        Never retroactively changes buses already instantiated from this
-        template — `seatLayout` on existing buses is not remapped.
+        RETROACTIVE: the stored `seatLayout` on existing buses is not
+        remapped, but the rendered seat grid of every bus referencing this
+        template (`Bus.busTypeId`) is joined live to this document — so a
+        change here immediately changes those buses' seat maps, including
+        buses with seats already booked. Callers must warn the admin (see
+        `BusType.busCount`) before issuing this request; the server does not
+        block the edit.
       security:
         - bearerAuth: []
       parameters:

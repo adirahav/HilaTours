@@ -135,6 +135,8 @@ describe('busService.loadWithPii', () => {
         pickupPoints: [],
         driverSide: 'left',
         doorPosition: 'front',
+        busTypeId: null,
+        grid: null,
         isDefault: false,
         totalSeats: 1,
         seats: [{ id: 'seat1', seatNumber: 1, row: 1, col: 1, seatStatus: 'available' }]

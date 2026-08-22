@@ -256,7 +256,6 @@ export function PassengerViewPage() {
             className="text-xs font-bold text-slate-500 hover:text-slate-800 flex items-center gap-1 mb-2 focus:outline-none focus-visible:ring-2 focus-visible:ring-blue-500 rounded"
           >
             <ArrowRight className="w-4 h-4" aria-hidden="true" />
-            <span>חזרה לרשימת הטיולים</span>
           </button>
           <h2 className="text-xl font-bold text-slate-900">{currentTour.title}</h2>
           <p className="text-xs text-slate-500 mt-1 flex items-center gap-3">
@@ -316,6 +315,7 @@ export function PassengerViewPage() {
             <BusMap
               seats={activeBus?.seats || []}
               totalSeats={totalSeats}
+              grid={activeBus?.grid ?? null}
               selectedSeatNumbers={selectedSeatNumbers}
               onToggleSelectSeat={(seatNum) => {
                 if (isTourEnded) return

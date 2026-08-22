@@ -96,6 +96,52 @@ describe('tourMapper', () => {
       expect(bus.totalSeats).toBe(2)
     })
 
+    it('maps the live-joined BusType grid and busTypeId', () => {
+      const bus = mapBus({
+        id: BUS_ID,
+        totalSeats: 18,
+        busTypeId: 'bt-1',
+        busTypeGrid: {
+          standardRowsCount: 4,
+          doorRow: 3,
+          backRowSeatsCount: 4,
+          disabledSeatSlots: ['5-3']
+        }
+      })
+      expect(bus.busTypeId).toBe('bt-1')
+      expect(bus.grid).toEqual({
+        standardRowsCount: 4,
+        doorRow: 3,
+        backRowSeatsCount: 4,
+        disabledSeatSlots: ['5-3']
+      })
+    })
+
+    it('reports no template for a manually-configured bus', () => {
+      const bus = mapBus({ id: BUS_ID, totalSeats: 52 })
+      expect(bus.busTypeId).toBeNull()
+      expect(bus.grid).toBeNull()
+    })
+
+    it('treats a grid missing its row counts as absent rather than as an empty bus', () => {
+      const bus = mapBus({ id: BUS_ID, totalSeats: 52, busTypeGrid: { doorRow: 3 } })
+      expect(bus.grid).toBeNull()
+    })
+
+    it('normalises an absent doorRow to null', () => {
+      const bus = mapBus({
+        id: BUS_ID,
+        totalSeats: 8,
+        busTypeGrid: { standardRowsCount: 2, backRowSeatsCount: 4 }
+      })
+      expect(bus.grid).toEqual({
+        standardRowsCount: 2,
+        doorRow: null,
+        backRowSeatsCount: 4,
+        disabledSeatSlots: []
+      })
+    })
+
     it('defaults driverSide/doorPosition when absent or invalid', () => {
       const bus = mapBus({ id: BUS_ID, driverSide: 'sideways' })
       expect(bus.driverSide).toBe('left')
@@ -116,7 +162,7 @@ describe('tourMapper', () => {
       ])
     })
 
-    it('derives row/col from the canonical bus layout', () => {
+    it('falls back to the generic bus layout when the server sends no row/col', () => {
       const seats = mapSeats(rawTour().buses![0].seats, 52)
       const layout = generateBusSeats(52)
       seats.forEach((seat) => {
@@ -126,6 +172,34 @@ describe('tourMapper', () => {
           col: expected.col
         })
       })
+    })
+
+    // The bug this guards (2026-08-22): a BusType with a gap in the middle
+    // of a row cannot be expressed by a flat `positions` list, so deriving
+    // row/col from `generateBusSeats` packed the gap out of existence. The
+    // backend now resolves each seat's cell against the live template and
+    // sends it; the mapper must take it verbatim.
+    it('prefers server-supplied row/col over the generic layout', () => {
+      const seats = mapSeats(
+        [
+          { id: 'a', position: '1', status: 'available', row: 5, col: 4 },
+          { id: 'b', position: '2', status: 'available', row: 5, col: 2 }
+        ],
+        52
+      )
+      expect(seats.map((s) => ({ row: s.row, col: s.col }))).toEqual([
+        { row: 5, col: 4 },
+        { row: 5, col: 2 }
+      ])
+      // Seat 2 sits at col 2, NOT col 3 — the gap at col 3 survives.
+      const generic = generateBusSeats(52)
+      expect(seats[1].col).not.toBe(generic.find((s) => s.seatNumber === 2)!.col)
+    })
+
+    it('ignores a half-supplied row/col pair rather than placing the seat wrongly', () => {
+      const [seat] = mapSeats([{ id: 'a', position: '1', status: 'available', row: 9 }], 52)
+      const expected = generateBusSeats(52).find((s) => s.seatNumber === 1)!
+      expect({ row: seat.row, col: seat.col }).toEqual({ row: expected.row, col: expected.col })
     })
 
     it('orders positions naturally so "10A" comes after "2A"', () => {

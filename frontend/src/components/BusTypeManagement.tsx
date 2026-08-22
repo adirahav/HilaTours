@@ -17,6 +17,7 @@ import {
   Sliders,
   Star,
   Trash2,
+  TriangleAlert,
   X
 } from 'lucide-react'
 import { useStore } from '../store/store'
@@ -127,6 +128,9 @@ export function BusTypeManagement({ isLoading = false }: BusTypeManagementProps)
     disabledSeatSlots,
     doorRow
   )
+
+  // Server-computed count of buses referencing the template being edited.
+  const inUseByBusCount = activeBusType?.busCount ?? 0
 
   const { standardGrid, backRow } = buildNumberedGrid(
     standardRowsCount,
@@ -546,6 +550,26 @@ export function BusTypeManagement({ isLoading = false }: BusTypeManagementProps)
                   </p>
                 )}
 
+                {/* Warn, never block (product decision, 2026-08-22): buses
+                    join LIVE to their template, so saving here immediately
+                    changes the rendered seat map of every bus built from it —
+                    including seats passengers have already booked. */}
+                {inUseByBusCount > 0 && (
+                  <div
+                    role="status"
+                    className="rounded-2xl border border-amber-300 bg-amber-50 p-3 flex items-start gap-2"
+                  >
+                    <TriangleAlert
+                      className="w-4 h-4 text-amber-600 shrink-0 mt-0.5"
+                      aria-hidden="true"
+                    />
+                    <p className="text-[11px] font-semibold text-amber-900 leading-relaxed">
+                      דגם זה בשימוש ב-{inUseByBusCount} אוטובוסים; שינויים כאן ישנו מיידית את מפת
+                      המושבים שלהם.
+                    </p>
+                  </div>
+                )}
+
                 <button
                   type="button"
                   onClick={handleSave}
@@ -764,7 +788,14 @@ export function BusTypeManagement({ isLoading = false }: BusTypeManagementProps)
       <ConfirmModal
         isOpen={confirmDeleteId !== null}
         title="מחיקת סוג אוטובוס"
-        message="האם למחוק תבנית זו? אוטובוסים שכבר נוצרו ממנה לא ישתנו."
+        // Deletion is a soft-delete, and the render join deliberately resolves
+        // soft-deleted templates too — so existing buses keep rendering
+        // correctly; the template just disappears from the picker.
+        message={
+          inUseByBusCount > 0
+            ? `האם למחוק תבנית זו? היא בשימוש ב-${inUseByBusCount} אוטובוסים — מפת המושבים שלהם תמשיך לעבוד כרגיל, אך לא ניתן יהיה ליצור ממנה אוטובוסים חדשים.`
+            : 'האם למחוק תבנית זו? לא ניתן יהיה ליצור ממנה אוטובוסים חדשים.'
+        }
         confirmLabel="מחק תבנית"
         onConfirm={handleConfirmDelete}
         onClose={() => setConfirmDeleteId(null)}

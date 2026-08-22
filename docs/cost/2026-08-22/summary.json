@@ -3,48 +3,39 @@
     {
       "role": "orchestrator",
       "label": "Orchestrator (planning)",
-      "inputTokens": 873,
-      "outputTokens": 9978,
-      "cacheReadTokens": 181590,
-      "costUsd": 0.41086599999999995,
-      "durationMs": 101676
-    },
-    {
-      "role": "frontend",
-      "label": "Frontend Agent",
-      "inputTokens": 4337,
-      "outputTokens": 48669,
-      "cacheReadTokens": 7936791,
-      "costUsd": 3.6954813000000004,
-      "durationMs": 1160720
+      "inputTokens": 7,
+      "outputTokens": 8841,
+      "cacheReadTokens": 105038,
+      "costUsd": 0.24286390000000002,
+      "durationMs": 88756
     },
     {
       "role": "tour-service",
       "label": "Backend Agent — tour-service",
-      "inputTokens": 64,
-      "outputTokens": 22234,
-      "cacheReadTokens": 2393620,
-      "costUsd": 1.36868875,
-      "durationMs": 382289
+      "inputTokens": 1208,
+      "outputTokens": 10980,
+      "cacheReadTokens": 819938,
+      "costUsd": 0.6392031499999999,
+      "durationMs": 207582
     },
     {
       "role": "qa",
       "label": "QA Agent",
-      "inputTokens": 10,
-      "outputTokens": 5088,
-      "cacheReadTokens": 129440,
-      "costUsd": 0.8802522500000001,
-      "durationMs": 479246
+      "inputTokens": 56,
+      "outputTokens": 9231,
+      "cacheReadTokens": 1234809,
+      "costUsd": 0.7576129500000001,
+      "durationMs": 450314
     },
     {
       "role": "security",
       "label": "Security Agent",
-      "inputTokens": 1492,
-      "outputTokens": 19563,
-      "cacheReadTokens": 2286300,
-      "costUsd": 1.2612934999999998,
-      "durationMs": 413784
+      "inputTokens": 58,
+      "outputTokens": 18138,
+      "cacheReadTokens": 1402285,
+      "costUsd": 0.8834477499999999,
+      "durationMs": 275615
     }
   ],
-  "totalCostUsd": 7.6165818
+  "totalCostUsd": 2.52312775
 }

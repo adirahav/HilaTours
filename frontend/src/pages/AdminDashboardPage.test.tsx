@@ -66,6 +66,8 @@ const buildTour = (): Tour => ({
       pickupPoints: ['תחנה מרכזית'],
       driverSide: 'left',
       doorPosition: 'front',
+      busTypeId: null,
+      grid: null,
       isDefault: false,
       totalSeats: 52,
       seats: []

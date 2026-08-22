@@ -6,7 +6,11 @@ import { HttpError } from "../lib/http"
 import { toClientBus, toClientSeat, toPublicSeat } from "../lib/clientShape"
 import { resolveDoc, resolveObjectId } from "../lib/resolveId"
 import { comparePosition } from "../lib/position"
-import { seatLayoutForBusTypeUuid } from "../busType/busType.service"
+import {
+  busTypeGridForBus,
+  resolveBusTypeObjectId,
+  seatLayoutForBusTypeUuid,
+} from "../busType/busType.service"
 
 export interface BusInput {
   name?: string
@@ -89,7 +93,11 @@ export async function listBuses(tourUuid: string) {
     deletedAt: { $exists: true },
   })
   const buses = await Bus.find({ tourId, deletedAt: null }).lean()
-  return buses.map((bus: any) => toClientBus(bus, tourUuid))
+  return Promise.all(
+    buses.map(async (bus: any) =>
+      toClientBus(bus, tourUuid, await busTypeGridForBus(bus.busTypeId)),
+    ),
+  )
 }
 
 /**
@@ -118,8 +126,10 @@ export async function listBusesWithPublicSeats(tourId: Types.ObjectId, tourUuid:
     buses.map(async (bus: any) => {
       const seats = await Seat.find({ busId: bus._id }).select(PUBLIC_SEAT_FIELDS).lean()
       seats.sort((a: any, b: any) => comparePosition(a.position, b.position))
+      // The grid is structural (row/col only) — adding it here does NOT widen
+      // PUBLIC_SEAT_FIELDS and carries no passenger data (SEV-001).
       return {
-        ...toClientBus(bus, tourUuid),
+        ...toClientBus(bus, tourUuid, await busTypeGridForBus(bus.busTypeId)),
         totalSeats: seats.length,
         seats: seats.map(toPublicSeat),
       }
@@ -132,7 +142,7 @@ export async function getBusWithSeats(tourUuid: string, busUuid: string) {
   const seats = await Seat.find({ busId: bus._id }).lean()
   seats.sort((a: any, b: any) => comparePosition(a.position, b.position))
   return {
-    ...toClientBus(bus, tourUuid),
+    ...toClientBus(bus, tourUuid, await busTypeGridForBus(bus.busTypeId as any)),
     seats: seats.map((s: any) => toClientSeat(s, bus.uuid)),
   }
 }
@@ -143,13 +153,23 @@ async function insertBus(
   seatLayout: Record<string, unknown>,
   pickupPoints: PickupPoint[],
   isDefault: boolean,
+  busTypeId: Types.ObjectId | null = null,
 ) {
   const positions = seatPositionsFromLayout(seatLayout)
   if (positions.length === 0) {
     throw new HttpError(400, "seatLayout produced no seats")
   }
 
-  const bus = await Bus.create({ tourId, name, seatLayout, pickupPoints, isDefault })
+  // `busTypeId` is written explicitly (as `null` for a manual bus) rather than
+  // omitted, so "built from no template" is never ambiguous with "field absent".
+  const bus = await Bus.create({
+    tourId,
+    name,
+    seatLayout,
+    busTypeId,
+    pickupPoints,
+    isDefault,
+  })
 
   // Seats reference the bus by internal `_id` — refs stay internal, only the
   // client-facing projection changes. Each seat gets its own uuid by default.
@@ -178,17 +198,28 @@ export async function createBus(tourUuid: string, input: BusInput) {
     throw new HttpError(400, "name and either seatLayout or busTypeId are required")
   }
 
-  // Converting a template is a one-time copy: the resulting bus stores the
-  // generated seatLayout and keeps no reference back to the BusType, so
-  // editing or soft-deleting the template later never touches this bus.
+  // Building from a template also persists a LIVE reference to it (plan 037):
+  // `seatLayout` still holds the flat position list the seats are seeded from,
+  // but the rendered grid — row/col, gaps included — is re-derived from the
+  // current BusType on every read. Editing the template therefore does change
+  // this bus's seat map afterwards; that is the intended, admin-warned
+  // behaviour, and it is what keeps mid-row gaps from being lost.
+  const busTypeId = hasBusTypeId ? await resolveBusTypeObjectId(input.busTypeId) : null
   const seatLayout = hasBusTypeId
     ? await seatLayoutForBusTypeUuid(input.busTypeId)
     : (input.seatLayout as Record<string, unknown>)
 
   // isDefault is never accepted from client input (see BusInput) — only
   // createDefaultBus below can set it.
-  const bus = await insertBus(tourId, input.name, seatLayout, input.pickupPoints ?? [], false)
-  return toClientBus(bus.toObject(), tourUuid)
+  const bus = await insertBus(
+    tourId,
+    input.name,
+    seatLayout,
+    input.pickupPoints ?? [],
+    false,
+    busTypeId,
+  )
+  return toClientBus(bus.toObject(), tourUuid, await busTypeGridForBus(busTypeId))
 }
 
 const DEFAULT_BUS_SEAT_COUNT = 55
@@ -306,9 +337,16 @@ export async function updateBus(tourUuid: string, busUuid: string, input: BusInp
     // before any seat is touched.
     const seatLayout = await seatLayoutForBusTypeUuid(input.busTypeId)
     update.seatLayout = seatLayout
+    // Re-point the live reference too, so the render join follows the bus to
+    // its new template rather than staying on the previous one.
+    update.busTypeId = await resolveBusTypeObjectId(input.busTypeId)
     await reseedSeatsByPosition(existing._id as Types.ObjectId, seatLayout)
   } else if (input.seatLayout !== undefined) {
     update.seatLayout = input.seatLayout
+    // A raw seatLayout replaces the template outright, so the live reference
+    // must be cleared — leaving it would let the old template's grid keep
+    // overriding the layout the admin just hand-configured.
+    update.busTypeId = null
     await resizeSeats(existing._id as Types.ObjectId, input.seatLayout)
   }
 
@@ -318,7 +356,7 @@ export async function updateBus(tourUuid: string, busUuid: string, input: BusInp
     { returnDocument: "after" },
   ).lean()
   if (!bus) throw new HttpError(404, "Bus not found")
-  return toClientBus(bus, tourUuid)
+  return toClientBus(bus, tourUuid, await busTypeGridForBus((bus as any).busTypeId))
 }
 
 export async function softDeleteBus(tourUuid: string, busUuid: string) {

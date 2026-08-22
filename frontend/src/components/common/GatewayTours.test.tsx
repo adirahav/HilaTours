@@ -22,6 +22,8 @@ const buildBus = (id: string, statuses: SeatStatus[]): Bus => ({
   pickupPoints: [],
   driverSide: 'left',
   doorPosition: 'front',
+  busTypeId: null,
+  grid: null,
   isDefault: false,
   totalSeats: statuses.length,
   seats: statuses.map((s, i) => buildSeat(i + 1, s))

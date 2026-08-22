@@ -50,7 +50,8 @@ export function BusModal({ isOpen, onClose, onSave, busToEdit }: BusModalProps) 
   const [nameError, setNameError] = useState('')
   const [pickupError, setPickupError] = useState('')
   const [seatsError, setSeatsError] = useState('')
-  const [confirmReset, setConfirmReset] = useState(false)
+  const [initialBusTypeId, setInitialBusTypeId] = useState<string | null>(null)
+  const [showChangeConfirm, setShowChangeConfirm] = useState(false)
 
   // Templates are loaded into the store by the admin dashboard. Bus size is
   // always chosen from this list — there is no manual/free-form seat count.
@@ -69,16 +70,15 @@ export function BusModal({ isOpen, onClose, onSave, busToEdit }: BusModalProps) 
   // backend reseeds by position — seats whose position exists in both the
   // old and new layout keep their occupant untouched; only seats at
   // positions absent from the new layout (e.g. a smaller template, or a
-  // door-row shift) lose their assignment. No size restriction is applied
-  // here; the admin only has to explicitly confirm before doing this when
-  // any seat is occupied, since some occupants may be affected (see
-  // confirmReset) — this is a conservative warning, not a guarantee that
-  // every occupied seat will actually be lost.
+  // door-row shift) lose their assignment. No size restriction is applied.
+  // The warning is a confirmation MODAL shown only at save time, and only
+  // when the admin actually changed the bus type away from what the bus
+  // already had — not an always-visible inline banner.
   const hasOccupiedSeats = useMemo(
     () => (busToEdit?.seats ?? []).some((s) => s.seatStatus !== 'available'),
     [busToEdit]
   )
-  const isChangingBusType = !!busToEdit && selectedBusType !== null
+  const busTypeChanged = !!busToEdit && busTypeId !== initialBusTypeId
 
   useEffect(() => {
     if (!isOpen) return
@@ -89,19 +89,22 @@ export function BusModal({ isOpen, onClose, onSave, busToEdit }: BusModalProps) 
       // No link is kept between a bus and the template it was created from
       // (see plan 034, Open Question 2) — preselect the template whose seat
       // count matches, if any, else leave it for the admin to pick.
-      setBusTypeId(busTypes.find((t) => t.totalSeats === busToEdit.totalSeats)?.id ?? null)
+      const matched = busTypes.find((t) => t.totalSeats === busToEdit.totalSeats)?.id ?? null
+      setBusTypeId(matched)
+      setInitialBusTypeId(matched)
     } else {
       setBusName('')
       setDescription('')
       setPickupPoints([])
       // Preselect the template marked as default, if one exists.
       setBusTypeId(busTypes.find((t) => t.isDefault)?.id ?? null)
+      setInitialBusTypeId(null)
     }
     setNewPickup('')
     setNameError('')
     setPickupError('')
     setSeatsError('')
-    setConfirmReset(false)
+    setShowChangeConfirm(false)
   }, [busToEdit, isOpen, busTypes])
 
   // Initial focus on the name input when opened.
@@ -189,6 +192,19 @@ export function BusModal({ isOpen, onClose, onSave, busToEdit }: BusModalProps) 
     setDragOverIndex(null)
   }
 
+  const commitSave = () => {
+    onSave(
+      busName.trim(),
+      description.trim(),
+      pickupPoints,
+      selectedBusType!.totalSeats,
+      DRIVER_SIDE,
+      DOOR_POSITION,
+      selectedBusType!.id
+    )
+    onClose()
+  }
+
   const handleSubmit = (e: React.FormEvent) => {
     e.preventDefault()
     setNameError('')
@@ -203,26 +219,19 @@ export function BusModal({ isOpen, onClose, onSave, busToEdit }: BusModalProps) 
     if (!selectedBusType) {
       setSeatsError('יש לבחור דגם אוטובוס')
       hasError = true
-    } else if (isChangingBusType && hasOccupiedSeats && !confirmReset) {
-      // Confirmation guard: the backend reseeds by position (positions
-      // shared with the new layout keep their occupant; positions absent
-      // from it lose theirs) — always allowed, never size-blocked, but
-      // requires explicit admin confirmation whenever any seat is occupied
-      // (product decision, 2026-08-22).
-      setSeatsError('יש לאשר את השינוי לפני החלפת הדגם')
-      hasError = true
     }
     if (hasError) return
-    onSave(
-      trimmedName,
-      description.trim(),
-      pickupPoints,
-      selectedBusType!.totalSeats,
-      DRIVER_SIDE,
-      DOOR_POSITION,
-      selectedBusType!.id
-    )
-    onClose()
+
+    // Confirmation guard: only when actually changing the bus type on an
+    // existing bus that has occupied seats — shown as a confirm modal at
+    // save time, not an always-visible inline banner. The backend reseeds
+    // by position (seats whose position exists in both layouts keep their
+    // occupant; only positions absent from the new layout lose theirs).
+    if (busTypeChanged && hasOccupiedSeats) {
+      setShowChangeConfirm(true)
+      return
+    }
+    commitSave()
   }
 
   const inputClass =
@@ -351,31 +360,6 @@ export function BusModal({ isOpen, onClose, onSave, busToEdit }: BusModalProps) 
                     {selectedBusType.doorRow ? `, דלת בשורה ${selectedBusType.doorRow}` : ', ללא דלת אמצעית'}.
                   </p>
                 )}
-                {isChangingBusType && hasOccupiedSeats && (
-                  <div className="mt-2 rounded-2xl border border-amber-300 bg-amber-50 p-3">
-                    <p className="text-[11px] font-semibold text-amber-800 flex items-start gap-1.5">
-                      <AlertCircle className="w-3.5 h-3.5 shrink-0 mt-0.5" aria-hidden="true" />
-                      <span>
-                        שינוי הדגם יעדכן את מפת המושבים: נוסעים במושבים שקיימים גם בדגם החדש{' '}
-                        <b>ישמרו את השיוך שלהם</b>, אך <b>מושבים שלא קיימים בדגם החדש</b> (למשל אם הדגם קטן
-                        יותר, או שמיקום הדלת שונה) <b>יאבדו את שיוך הנוסע</b>. פעולה זו אינה הפיכה עבור
-                        המושבים שנעלמים.
-                      </span>
-                    </p>
-                    <label className="flex items-center gap-2 mt-2 text-[11px] font-medium text-amber-900">
-                      <input
-                        type="checkbox"
-                        checked={confirmReset}
-                        onChange={(e) => {
-                          setConfirmReset(e.target.checked)
-                          if (seatsError) setSeatsError('')
-                        }}
-                        className="rounded border-amber-400 text-amber-700 focus:ring-amber-500"
-                      />
-                      אני מבין/ה ומאשר/ת שמושבים שלא קיימים בדגם החדש יאבדו את שיוך הנוסע
-                    </label>
-                  </div>
-                )}
               </>
             )}
             {seatsError && (
@@ -394,9 +378,6 @@ export function BusModal({ isOpen, onClose, onSave, busToEdit }: BusModalProps) 
               <label htmlFor={`${titleId}-pickup`} className="block text-xs font-bold text-slate-700">
                 נקודות איסוף:
               </label>
-              <span className="text-[11px] text-blue-600 font-medium">
-                לחץ וגורר לשינוי סדר האיסוף
-              </span>
             </div>
 
             <div className="flex gap-2 mb-2">
@@ -530,6 +511,59 @@ export function BusModal({ isOpen, onClose, onSave, busToEdit }: BusModalProps) 
           </div>
         </form>
       </div>
+
+      {showChangeConfirm && (
+        <div
+          className="fixed inset-0 z-[60] bg-slate-900/70 flex items-center justify-center p-4"
+          onMouseDown={(e) => {
+            if (e.target === e.currentTarget) setShowChangeConfirm(false)
+          }}
+        >
+          <div
+            role="alertdialog"
+            aria-modal="true"
+            aria-labelledby={`${titleId}-confirm-title`}
+            dir="rtl"
+            className="bg-white rounded-3xl max-w-sm w-full p-6 shadow-2xl border border-amber-300"
+          >
+            <div className="flex items-start gap-3 mb-4">
+              <div className="w-9 h-9 rounded-full bg-amber-100 text-amber-700 flex items-center justify-center shrink-0">
+                <AlertCircle className="w-5 h-5" aria-hidden="true" />
+              </div>
+              <div>
+                <h4 id={`${titleId}-confirm-title`} className="text-sm font-bold text-slate-900">
+                  לאשר שינוי דגם אוטובוס?
+                </h4>
+                <p className="text-xs text-slate-600 mt-2 leading-relaxed">
+                  שינוי הדגם יעדכן את מפת המושבים: נוסעים במושבים שקיימים גם בדגם החדש{' '}
+                  <b>ישמרו את השיוך שלהם</b>, אך <b>מושבים שלא קיימים בדגם החדש</b> (למשל אם הדגם קטן
+                  יותר, או שמיקום הדלת שונה) <b>יאבדו את שיוך הנוסע</b>. פעולה זו אינה הפיכה עבור
+                  המושבים שנעלמים.
+                </p>
+              </div>
+            </div>
+            <div className="flex items-center gap-3">
+              <button
+                type="button"
+                onClick={() => setShowChangeConfirm(false)}
+                className="w-1/2 py-2.5 bg-slate-100 text-slate-700 font-semibold rounded-2xl hover:bg-slate-200 text-sm transition focus:outline-none focus:ring-2 focus:ring-slate-400"
+              >
+                ביטול
+              </button>
+              <button
+                type="button"
+                onClick={() => {
+                  setShowChangeConfirm(false)
+                  commitSave()
+                }}
+                className="w-1/2 py-2.5 bg-amber-600 text-white font-bold rounded-2xl shadow-md transition text-sm hover:bg-amber-700 focus:outline-none focus:ring-2 focus:ring-amber-700"
+              >
+                אשר ושמור
+              </button>
+            </div>
+          </div>
+        </div>
+      )}
     </div>
   )
 }

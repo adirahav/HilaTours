@@ -22,6 +22,7 @@ const busTypeFixture = (
   backRowSeatsCount: 5,
   disabledSeatSlots: [],
   isDefault,
+  busCount: 0,
   createdAt: '2026-08-01'
 })
 
@@ -50,6 +51,8 @@ const editBus: Bus = {
   totalSeats: 55,
   driverSide: 'left',
   doorPosition: 'front',
+  busTypeId: null,
+  grid: null,
   isDefault: false,
   seats: []
 }

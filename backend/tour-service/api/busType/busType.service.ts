@@ -56,29 +56,60 @@ export interface BusTypeLayout {
   disabledSeatSlots: string[]
 }
 
+/** One numbered seat of a template, with the grid cell it occupies. */
+export interface BusTypeGridSeat {
+  /** Flat sequential position, `"1"`..`"N"` — matches `Seat.position`. */
+  position: string
+  /** 1-based row; the back bench is row `standardRowsCount + 1`. */
+  row: number
+  /** 1-based column within the row. */
+  col: number
+}
+
+/**
+ * THE row/col/gap walk — the single place a template's seats are numbered.
+ *
+ * Everything else (`seatPositionsFromBusType` for counting, the render join for
+ * presentation) is derived from this one function, so the flat position list
+ * stored on a bus and the grid used to draw it can never drift apart. That
+ * drift is exactly the bug plan 037 fixes: a gap in the middle of a row is
+ * invisible in a flat `positions: string[]`, so any second implementation that
+ * re-derives row/col from the count alone packs the seats and loses the gap.
+ *
+ * Walk order (must never change without a data migration): row by row, col
+ * 1 → 4, skipping the doorway slot and any disabled slot, then the back bench.
+ */
+export function seatGridFromBusType(busType: BusTypeLayout): BusTypeGridSeat[] {
+  const disabled = new Set(busType.disabledSeatSlots ?? [])
+  const doorRow = busType.doorRow ?? null
+  const seats: BusTypeGridSeat[] = []
+  const push = (row: number, col: number) =>
+    seats.push({ position: String(seats.length + 1), row, col })
+
+  for (let row = 1; row <= busType.standardRowsCount; row++) {
+    for (let col = 1; col <= STANDARD_ROW_COLUMNS; col++) {
+      if (isDoorwaySlot(row, col, doorRow)) continue
+      if (disabled.has(`${row}-${col}`)) continue
+      push(row, col)
+    }
+  }
+
+  const backRowIndex = busType.standardRowsCount + 1
+  for (let col = 1; col <= busType.backRowSeatsCount; col++) {
+    if (isBackSlotDisabled(disabled, backRowIndex, col)) continue
+    push(backRowIndex, col)
+  }
+
+  return seats
+}
+
 /**
  * The seat positions a template produces, in seat-number order: `"1"`..`"N"`,
  * matching the plain numeric positions every other bus in this service uses
  * (see bus.service.createDefaultBus).
  */
 export function seatPositionsFromBusType(busType: BusTypeLayout): string[] {
-  const disabled = new Set(busType.disabledSeatSlots ?? [])
-  const doorRow = busType.doorRow ?? null
-  let count = 0
-
-  for (let row = 1; row <= busType.standardRowsCount; row++) {
-    for (let col = 1; col <= STANDARD_ROW_COLUMNS; col++) {
-      if (isDoorwaySlot(row, col, doorRow)) continue
-      if (!disabled.has(`${row}-${col}`)) count++
-    }
-  }
-
-  const backRowIndex = busType.standardRowsCount + 1
-  for (let col = 1; col <= busType.backRowSeatsCount; col++) {
-    if (!isBackSlotDisabled(disabled, backRowIndex, col)) count++
-  }
-
-  return Array.from({ length: count }, (_, i) => String(i + 1))
+  return seatGridFromBusType(busType).map((seat) => seat.position)
 }
 
 /** Total bookable seats a template produces. */
@@ -216,9 +247,11 @@ export async function updateBusType(busTypeUuid: string, input: BusTypeInput) {
 }
 
 /**
- * Soft-delete only (`deletedAt`). Buses already instantiated from this
- * template are deliberately untouched — conversion is a one-time copy that
- * keeps no live reference back here (plan 034, Open Question 2).
+ * Soft-delete only (`deletedAt`). Buses referencing this template keep
+ * rendering: the template disappears from the admin picker and from
+ * `listBusTypes`/`getBusType`, but the render join
+ * (`resolveBusTypeForBusRender`) deliberately still resolves it, so an
+ * existing bus's seat map never breaks (plan 037).
  */
 export async function softDeleteBusType(busTypeUuid: string) {
   const message = "Bus type not found or already deleted"
@@ -246,4 +279,73 @@ export async function seatLayoutForBusTypeUuid(busTypeUuid: unknown) {
     { deletedAt: null },
   )
   return seatLayoutFromBusType(busType as unknown as BusTypeLayout)
+}
+
+/**
+ * Resolves a client-supplied `busTypeId` to the template's internal `_id`, for
+ * persisting on `Bus.busTypeId`. Scoped to live templates — a new bus may only
+ * ever be built from a template the admin can still see.
+ */
+export async function resolveBusTypeObjectId(busTypeUuid: unknown): Promise<Types.ObjectId> {
+  const busType = await resolveBusTypeDoc(String(busTypeUuid))
+  return busType._id as Types.ObjectId
+}
+
+/**
+ * The grid a bus renders with, as seen by a client. `seats` is the authoritative
+ * part (one entry per `Seat.position`); the dimension fields are carried
+ * alongside so the client can size the grid and draw the back bench without
+ * re-deriving anything.
+ */
+export interface ClientBusTypeGrid {
+  busTypeId: string
+  standardRowsCount: number
+  doorRow: number | null
+  backRowSeatsCount: number
+  disabledSeatSlots: string[]
+  seats: BusTypeGridSeat[]
+}
+
+/**
+ * Render-time join: `Bus.busTypeId` → the template's CURRENT document.
+ *
+ * Deliberately soft-delete-tolerant (`deletedAt: { $exists: true }` opts out of
+ * the model's implicit live-only scope): a bus referencing a soft-deleted
+ * template must still render. This resolver is for the render join ONLY — never
+ * reuse it for the admin picker, `listBusTypes`, or new-bus creation, all of
+ * which must keep refusing soft-deleted templates (`resolveBusTypeDoc`).
+ *
+ * Returns `null` rather than throwing when the ref is absent or dangling: a
+ * missing grid is a clean signal to fall back to the generic layout, whereas a
+ * 404 here would break reading an otherwise-valid bus.
+ */
+export async function resolveBusTypeForBusRender(
+  busTypeId: Types.ObjectId | null | undefined,
+) {
+  if (!busTypeId) return null
+  const busType = await BusType.findOne({
+    _id: busTypeId,
+    deletedAt: { $exists: true },
+  }).lean()
+  return (busType as Record<string, any>) ?? null
+}
+
+/**
+ * The live grid for one bus, or `null` for a manually-configured bus. This is
+ * the read-side entry point every bus response goes through.
+ */
+export async function busTypeGridForBus(
+  busTypeId: Types.ObjectId | null | undefined,
+): Promise<ClientBusTypeGrid | null> {
+  const busType = await resolveBusTypeForBusRender(busTypeId)
+  if (!busType) return null
+  const layout = busType as unknown as BusTypeLayout
+  return {
+    busTypeId: busType.uuid,
+    standardRowsCount: layout.standardRowsCount,
+    doorRow: layout.doorRow ?? null,
+    backRowSeatsCount: layout.backRowSeatsCount,
+    disabledSeatSlots: layout.disabledSeatSlots ?? [],
+    seats: seatGridFromBusType(layout),
+  }
 }

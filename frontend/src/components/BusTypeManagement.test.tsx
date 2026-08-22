@@ -33,6 +33,7 @@ const busType: BusType = {
   backRowSeatsCount: 5,
   disabledSeatSlots: [],
   isDefault: false,
+  busCount: 0,
   createdAt: '2026-08-01'
 }
 
@@ -124,5 +125,44 @@ describe('BusTypeManagement', () => {
       )
     )
     expect(toastMock.success).toHaveBeenCalled()
+  })
+
+  // Buses join live to their template, so an edit here retroactively changes
+  // their seat maps. Product decision (2026-08-22): warn, never block.
+  describe('in-use warning', () => {
+    const renderWith = async (busCount: number) => {
+      const withCount = { ...busType, busCount }
+      queryMock.mockImplementation(async () => {
+        useStore.setState({ busTypes: [withCount] })
+        return [withCount]
+      })
+      render(<BusTypeManagement />)
+      await screen.findByDisplayValue('דגם 55')
+    }
+
+    it('warns that saving will change the seat maps of the buses using this template', async () => {
+      await renderWith(3)
+      expect(
+        screen.getByText(/דגם זה בשימוש ב-3 אוטובוסים; שינויים כאן ישנו מיידית את מפת המושבים שלהם\./)
+      ).toBeInTheDocument()
+    })
+
+    it('does not warn for a template no bus references', async () => {
+      await renderWith(0)
+      expect(screen.queryByText(/דגם זה בשימוש ב-/)).not.toBeInTheDocument()
+    })
+
+    it('warns but still allows the save to go through', async () => {
+      const user = userEvent.setup()
+      updateMock.mockResolvedValue(busType)
+      await renderWith(2)
+
+      expect(screen.getByText(/דגם זה בשימוש ב-2 אוטובוסים/)).toBeInTheDocument()
+      const saveButton = screen.getByRole('button', { name: /שמור שינויים בתבנית האוטובוס/ })
+      expect(saveButton).toBeEnabled()
+
+      await user.click(saveButton)
+      await waitFor(() => expect(updateMock).toHaveBeenCalledTimes(1))
+    })
   })
 })

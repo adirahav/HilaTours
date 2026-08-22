@@ -29,6 +29,7 @@ const rawBusType = {
   backRowSeatsCount: 5,
   disabledSeatSlots: [],
   isDefault: false,
+  busCount: 0,
   createdAt: '2026-08-01'
 }
 
@@ -42,6 +43,7 @@ const storedBusType = (overrides: Partial<BusType> = {}): BusType => ({
   backRowSeatsCount: 5,
   disabledSeatSlots: [],
   isDefault: false,
+  busCount: 0,
   createdAt: '2026-08-01',
   ...overrides
 })

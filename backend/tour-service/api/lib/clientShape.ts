@@ -65,13 +65,29 @@ export function toClientTour(tour: Record<string, any>) {
 /**
  * Bus as seen by a client. `tourId` is serialized as the owning tour's uuid,
  * never the internal ObjectId ref — pass it in from the resolved tour.
+ *
+ * `busTypeGrid` (plan 037) is the LIVE join to the bus's BusType template,
+ * resolved by the caller (`busType.service.busTypeGridForBus`) and passed in
+ * here. It carries the real row/col of every seat, gaps included, so the client
+ * never has to reconstruct a grid from the flat seat count — which is what lost
+ * mid-row gaps in the first place. `null` for a manually-configured bus, which
+ * keeps rendering via the client's generic fallback layout.
+ *
+ * Structural only (row/col/dimensions) — no passenger data — so it is safe on
+ * the unauthenticated tour responses as well (SEV-001).
  */
-export function toClientBus(bus: Record<string, any>, tourUuid?: string) {
+export function toClientBus(
+  bus: Record<string, any>,
+  tourUuid?: string,
+  busTypeGrid: Record<string, any> | null = null,
+) {
   return {
     id: bus.uuid,
     ...(tourUuid ? { tourId: tourUuid } : {}),
     name: bus.name,
     seatLayout: bus.seatLayout,
+    busTypeId: busTypeGrid?.busTypeId ?? null,
+    busTypeGrid,
     pickupPoints: (bus.pickupPoints ?? []).map((p: any) => ({ name: p.name, order: p.order })),
     isDefault: bus.isDefault ?? false,
     createdAt: bus.createdAt,

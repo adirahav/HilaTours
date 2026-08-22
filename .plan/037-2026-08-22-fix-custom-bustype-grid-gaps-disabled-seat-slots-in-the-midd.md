@@ -1,6 +1,6 @@
 # 037 — Fix: custom BusType grid gaps (disabled seat slots) lost by the time the seat map renders
 
-Status: draft
+Status: done
 Owner: orchestrator
 Last updated: 2026-08-22
 Scope-Agents: tour-service, frontend, qa
@@ -37,8 +37,10 @@ This plan supersedes `.plan/036-2026-08-22-preserve-custom-bustype-grid-gaps-dis
 
 1. Does `BusMap.tsx`'s back-row rendering need to become driven by the actual `backRowSeatsCount`/gap positions from the joined `BusType`, rather than the hardcoded `BACK_ROW_SEAT_COUNT = 5` from `busLayoutHelper.ts`, for BusType-derived buses?
    - Recommended: yes — resolved in Scope above as a concrete `BusMap.tsx` audit/fix step; `busLayoutHelper.ts`'s hardcoded generic layout remains correct and untouched for manual (non-BusType) buses only.
+   - *HUMAN ANSWER:* Yes, as recommended.
 2. Should the row/col join happen client-side (frontend re-derives grid from a fetched `BusType`) or server-side (backend embeds the resolved grid/row/col on the bus response)?
    - Recommended: server-side. Passengers never authenticate and today have no path to fetch `/busType`, so a client-side join would require either a new public BusType-read endpoint (widening the public API surface for template internals) or duplicating two algorithms that must never drift (the exact class of bug this ticket is about). Embedding the resolved grid on the existing public/admin bus responses is additive, keeps the numbering algorithm in exactly one place (backend), and needs no new route.
+   - *HUMAN ANSWER:* Server-side, as recommended.
 
 ## Steps
 

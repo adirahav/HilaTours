@@ -1,32 +1,32 @@
 {
   "frontend": {
-    "id": "AGE-312",
-    "issueId": "c22f1378-8655-4629-aa04-40e0aff4c670",
-    "url": "https://linear.app/agents-example/issue/AGE-312/fe-allow-destructive-bustype-change-on-existing-buses-via-put"
+    "id": "AGE-318",
+    "issueId": "e964b009-4b46-46d8-aca9-0efbde69cad0",
+    "url": "https://linear.app/agents-example/issue/AGE-318/fe-fix-custom-bustype-grid-gaps-disabled-seat-slots-in-the-middle-of-a"
   },
   "userManagementService": {
-    "id": "AGE-313",
-    "issueId": "ec02679c-0898-46f2-8aa9-225da8ff3e16",
-    "url": "https://linear.app/agents-example/issue/AGE-313/be-user-management-service-allow-destructive-bustype-change-on"
+    "id": "AGE-319",
+    "issueId": "6a8839d1-1da6-488a-9485-f2f0a2d6bba7",
+    "url": "https://linear.app/agents-example/issue/AGE-319/be-user-management-service-fix-custom-bustype-grid-gaps-disabled-seat"
   },
   "tourService": {
-    "id": "AGE-314",
-    "issueId": "5f8c6da7-2c91-44c5-ae4c-13183bec2f60",
-    "url": "https://linear.app/agents-example/issue/AGE-314/be-tour-service-allow-destructive-bustype-change-on-existing-buses-via"
+    "id": "AGE-320",
+    "issueId": "3d10388d-45b4-4759-960c-754bf4a698ed",
+    "url": "https://linear.app/agents-example/issue/AGE-320/be-tour-service-fix-custom-bustype-grid-gaps-disabled-seat-slots-in"
   },
   "commonService": {
-    "id": "AGE-315",
-    "issueId": "8de6576f-7f3e-47ec-836e-80ebf01eb624",
-    "url": "https://linear.app/agents-example/issue/AGE-315/be-common-service-allow-destructive-bustype-change-on-existing-buses"
+    "id": "AGE-321",
+    "issueId": "9a0ae4fe-9b6b-4200-bd67-945a1bc6ec29",
+    "url": "https://linear.app/agents-example/issue/AGE-321/be-common-service-fix-custom-bustype-grid-gaps-disabled-seat-slots-in"
   },
   "qa": {
-    "id": "AGE-316",
-    "issueId": "cebef20c-ab08-4582-82e4-90e30c4ce4ab",
-    "url": "https://linear.app/agents-example/issue/AGE-316/qa-allow-destructive-bustype-change-on-existing-buses-via-put"
+    "id": "AGE-322",
+    "issueId": "2f9e2bb4-5e94-478f-a383-d89d2b8eb09e",
+    "url": "https://linear.app/agents-example/issue/AGE-322/qa-fix-custom-bustype-grid-gaps-disabled-seat-slots-in-the-middle-of-a"
   },
   "security": {
-    "id": "AGE-317",
-    "issueId": "7a637a2e-3ef5-47e6-935e-1781e6eb9a08",
-    "url": "https://linear.app/agents-example/issue/AGE-317/sec-allow-destructive-bustype-change-on-existing-buses-via-put"
+    "id": "AGE-323",
+    "issueId": "e64857b2-7a53-4dc5-a622-99318e2bb079",
+    "url": "https://linear.app/agents-example/issue/AGE-323/sec-fix-custom-bustype-grid-gaps-disabled-seat-slots-in-the-middle-of"
   }
 }

@@ -1,5 +1,5 @@
 import type { Tour } from '../types/tour.types'
-import type { Bus, DriverSide, DoorPosition } from '../types/bus.types'
+import type { Bus, BusGrid, DriverSide, DoorPosition } from '../types/bus.types'
 import type { Seat, SeatStatus } from '../types/seat.types'
 import { generateBusSeats } from './busLayoutHelper'
 
@@ -35,6 +35,16 @@ export interface RawSeat {
   // Optional: if the backend ever emits an explicit seat number, it wins over
   // the position-order derivation below.
   seatNumber?: number
+  // Grid coordinates resolved SERVER-side from the bus's live BusType (see
+  // `RawBus.busTypeGrid`). Present only for template-derived buses. When both
+  // are present they win over the generic `generateBusSeats` derivation —
+  // that generic layout knows nothing about the template's disabled slots, so
+  // it silently packs gaps out of existence (the bug this fixes).
+  //
+  // Structural only (a coordinate pair), so copying these onto the public
+  // seat shape does not widen the PII surface — see SEV-001 note above.
+  row?: number
+  col?: number
   // PII fields — only ever present on the authenticated single-bus response
   // (GET /tour/:tourId/buses/:busId, toClientSeat). Never present on the
   // public GET /tour(/:tourId) response (toPublicSeat). `mapSeats` below
@@ -44,6 +54,14 @@ export interface RawSeat {
   passengerName?: string | null
   passengerPhone?: string | null
   notes?: string | null
+}
+
+/** Raw shape of the server-resolved live BusType grid on a bus response. */
+export interface RawBusTypeGrid {
+  standardRowsCount?: number
+  doorRow?: number | null
+  backRowSeatsCount?: number
+  disabledSeatSlots?: string[]
 }
 
 export interface RawPickupPoint {
@@ -65,6 +83,8 @@ export interface RawBus {
   driverSide?: string
   doorPosition?: string
   isDefault?: boolean
+  busTypeId?: string | null
+  busTypeGrid?: RawBusTypeGrid | null
   seats?: RawSeat[]
 }
 
@@ -114,9 +134,12 @@ function comparePosition(a: string, b: string): number {
  * backend resolves it as the 1-based index into the bus's seats sorted by
  * `position` — so the same ordering is reproduced here.
  *
- * `row`/`col` are taken from the app's single canonical layout
- * (`generateBusSeats`), which is the same convention BusMap and SeatManagement
- * already render against — no second layout convention is introduced.
+ * `row`/`col` come from the server when the bus was built from a BusType (the
+ * live-joined template grid, gaps included). Otherwise they fall back to the
+ * app's generic layout (`generateBusSeats`), which is the same convention
+ * BusMap and SeatManagement already render against — no second layout
+ * convention is introduced, and no numbering is ever re-derived client-side
+ * for a template-derived bus.
  */
 export function mapSeats(rawSeats: RawSeat[] | undefined, totalSeats: number): Seat[] {
   return mapSeatsInternal(rawSeats, totalSeats, false)
@@ -132,6 +155,15 @@ export function mapAdminSeats(rawSeats: RawSeat[] | undefined, totalSeats: numbe
   return mapSeatsInternal(rawSeats, totalSeats, true)
 }
 
+/**
+ * True when the backend resolved this seat's grid cell for us. Both
+ * coordinates must be present and finite — a half-supplied pair would place
+ * the seat at a plausible-looking but wrong cell, so it falls back instead.
+ */
+function hasServerCell(raw: RawSeat): boolean {
+  return Number.isFinite(raw.row) && Number.isFinite(raw.col)
+}
+
 function mapSeatsInternal(
   rawSeats: RawSeat[] | undefined,
   totalSeats: number,
@@ -139,14 +171,22 @@ function mapSeatsInternal(
 ): Seat[] {
   if (!rawSeats || rawSeats.length === 0) return []
 
+  // Only build the generic fallback layout when at least one seat lacks
+  // server-supplied coordinates — for a template-derived bus it is both
+  // unused and wrong (it packs the template's gaps out of existence).
+  const needsFallbackLayout = rawSeats.some((raw) => !hasServerCell(raw))
   const layout = new Map<number, { row: number; col: number }>()
-  generateBusSeats(totalSeats).forEach((s) => layout.set(s.seatNumber, { row: s.row, col: s.col }))
+  if (needsFallbackLayout) {
+    generateBusSeats(totalSeats).forEach((s) => layout.set(s.seatNumber, { row: s.row, col: s.col }))
+  }
 
   return [...rawSeats]
     .sort((a, b) => comparePosition(a.position ?? '', b.position ?? ''))
     .map((raw, index) => {
       const seatNumber = raw.seatNumber ?? index + 1
-      const cell = layout.get(seatNumber)
+      const cell = hasServerCell(raw)
+        ? { row: raw.row as number, col: raw.col as number }
+        : layout.get(seatNumber)
       return {
         id: raw.id ?? raw._id ?? `seat-${seatNumber}`,
         seatNumber,
@@ -172,6 +212,27 @@ function mapPickupPoints(raw: RawBus['pickupPoints']): string[] {
     .filter((name) => name.length > 0)
 }
 
+/**
+ * Maps the server-resolved live BusType grid, or null when the bus has no
+ * template (manual `seatLayout`) or the backend hasn't been rolled out yet.
+ * A grid missing its row/bench counts is treated as absent rather than as a
+ * zero-row bus — a partial response must degrade to the generic layout, not
+ * render an empty seat map.
+ */
+function mapBusTypeGrid(raw: RawBus['busTypeGrid']): BusGrid | null {
+  if (!raw) return null
+  const standardRowsCount = raw.standardRowsCount
+  const backRowSeatsCount = raw.backRowSeatsCount
+  if (!Number.isFinite(standardRowsCount) || !Number.isFinite(backRowSeatsCount)) return null
+
+  return {
+    standardRowsCount: standardRowsCount as number,
+    backRowSeatsCount: backRowSeatsCount as number,
+    doorRow: Number.isFinite(raw.doorRow) ? (raw.doorRow as number) : null,
+    disabledSeatSlots: raw.disabledSeatSlots ?? []
+  }
+}
+
 export function mapBus(raw: RawBus): Bus {
   // totalSeats drives the row/col layout, so fall back to the actual seat
   // count when the backend omits it rather than defaulting to a wrong size.
@@ -191,6 +252,8 @@ export function mapBus(raw: RawBus): Bus {
       ? (raw.doorPosition as DoorPosition)
       : 'front',
     isDefault: raw.isDefault ?? false,
+    busTypeId: raw.busTypeId ?? null,
+    grid: mapBusTypeGrid(raw.busTypeGrid),
     seats: mapSeats(raw.seats, totalSeats)
   }
 }

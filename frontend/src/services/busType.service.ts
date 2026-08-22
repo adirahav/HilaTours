@@ -21,6 +21,7 @@ export interface RawBusType {
   backRowSeatsCount?: number
   disabledSeatSlots?: string[]
   isDefault?: boolean
+  busCount?: number
   createdAt?: string
 }
 
@@ -49,6 +50,10 @@ export function mapBusType(raw: RawBusType): BusType {
     backRowSeatsCount,
     disabledSeatSlots,
     isDefault: raw.isDefault ?? false,
+    // Unlike `totalSeats`, this has no client-side formula to fall back on —
+    // only the server can count referencing buses. 0 means "don't warn",
+    // which is the safe default for a backend that hasn't shipped the field.
+    busCount: raw.busCount ?? 0,
     createdAt: raw.createdAt ?? ''
   }
 }
@@ -112,8 +117,10 @@ export const busTypeService = {
   },
 
   async remove(busTypeId: string): Promise<void> {
-    // Soft-delete server-side (`deletedAt`); existing buses instantiated from
-    // this template are unaffected, since conversion is a one-time copy.
+    // Soft-delete server-side (`deletedAt`). Buses referencing this template
+    // keep rendering: the render join resolves soft-deleted templates on
+    // purpose, so a delete removes it from the picker without breaking any
+    // existing bus's seat map (plan 037).
     await httpService.del(tourClient, `/busType/${busTypeId}`)
     useStore.getState().removeBusType(busTypeId)
   }
