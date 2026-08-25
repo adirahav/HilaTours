@@ -36,6 +36,16 @@ export interface SeatUpdatePayload {
   seats: unknown[]
 }
 
+// Attendance broadcasts carry passenger PII (name/phone/pickup point) in
+// `session.records`, so the backend emits them to the ADMIN room only — never
+// to the public, PII-stripped room (SEV-001). `deletedSessionId` is set
+// instead of `session` when a session was removed on another device.
+export interface AttendanceUpdatePayload {
+  busId: string
+  session?: unknown
+  deletedSessionId?: string
+}
+
 export const socketService = {
   // The server only puts the socket in the PII-bearing admin room if this
   // token verifies and grants "bus:view" (see backend api/lib/socket.ts) —
@@ -52,5 +62,12 @@ export const socketService = {
     const s = getSocket()
     s.on('seat:update', handler)
     return () => s.off('seat:update', handler)
+  },
+  // Reuses the same per-bus room membership established by joinBus() — a
+  // client that never got into the admin room simply never receives these.
+  onAttendanceUpdate(handler: (payload: AttendanceUpdatePayload) => void): () => void {
+    const s = getSocket()
+    s.on('attendance:update', handler)
+    return () => s.off('attendance:update', handler)
   }
 }

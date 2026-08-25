@@ -5,6 +5,7 @@ import { busRouter } from "./bus/bus.routes"
 import { busTypeRouter } from "./busType/busType.routes"
 import { seatRouter } from "./seat/seat.routes"
 import { manifestRouter } from "./manifest/manifest.routes"
+import { attendanceRouter } from "./attendance/attendance.routes"
 import { HttpError } from "./lib/http"
 
 // Base path matches the API contract server URL: /tour-service/api
@@ -41,6 +42,7 @@ export function createApp() {
   app.use(API_BASE, busTypeRouter)
   app.use(API_BASE, seatRouter)
   app.use(API_BASE, manifestRouter)
+  app.use(API_BASE, attendanceRouter)
 
   // Central error handler — maps HttpError to its status code.
   app.use((err: unknown, _req: Request, res: Response, _next: NextFunction) => {

@@ -1,22 +1,37 @@
-﻿import { Link, useLocation, useNavigate } from 'react-router-dom'
+﻿import { useMemo } from 'react'
+import { Link, useLocation, useNavigate } from 'react-router-dom'
 // `FileText` returns when the commented-out "דוח נוסעים" tab below is re-enabled.
-import { Bus, LogOut, Calendar, ArrowRight, Sliders } from 'lucide-react'
+import { Bus, LogOut, Calendar, ArrowRight, Sliders, UserCheck } from 'lucide-react'
 import { toast } from 'sonner'
 import { useStore } from '../../store/store'
 import { authService } from '../../services/auth.service'
 import { cn } from '../../lib/utils'
+import { isTourToday } from '../../lib/tourDate'
+import { resolveSelectedTour } from '../../lib/selectedTour'
 import logo from '../../assets/images/logo.png'
 
 type Mode = 'gateway' | 'passenger' | 'admin'
-type AdminTab = 'seats' | 'tours' | 'bus-types' | 'report'
+type AdminTab = 'seats' | 'tours' | 'bus-types' | 'attendance' | 'report'
 
-const ADMIN_TABS: {
+interface AdminTabDef {
   id: AdminTab
   path: string
   icon: typeof Bus
   desktopLabel: string
   mobileLabel: string
-}[] = [
+}
+
+// The day-of-tour attendance tab (F12). Kept out of ADMIN_TABS because it is
+// appended conditionally — see `visibleTabs` below.
+const ATTENDANCE_TAB: AdminTabDef = {
+  id: 'attendance',
+  path: '/admin/attendance',
+  icon: UserCheck,
+  desktopLabel: 'בדיקת נוכחות',
+  mobileLabel: 'נוכחות'
+}
+
+const ADMIN_TABS: AdminTabDef[] = [
   {
     id: 'seats',
     path: '/admin/seats',
@@ -54,7 +69,7 @@ function getMode(pathname: string): Mode {
 }
 
 function getActiveTab(pathname: string): AdminTab {
-  const match = ADMIN_TABS.find(t => pathname.startsWith(t.path))
+  const match = [...ADMIN_TABS, ATTENDANCE_TAB].find(t => pathname.startsWith(t.path))
   return match ? match.id : 'seats'
 }
 
@@ -76,6 +91,16 @@ export function Header() {
     mode === 'passenger'
       ? tours.find(t => t.id === activeTourId)?.title
       : undefined
+
+  // Attendance is a day-of-tour tool: the tab appears only while the selected
+  // tour is running today, and vanishes from both navs otherwise (F12/AC-12).
+  // AdminDashboardPage applies the same check as a route guard, so a tab left
+  // open past midnight redirects instead of lingering.
+  const visibleTabs = useMemo(() => {
+    const selectedTour = resolveSelectedTour(tours, selectedTourId)
+    const isTourDay = !!selectedTour && isTourToday(selectedTour.date)
+    return isTourDay ? [...ADMIN_TABS, ATTENDANCE_TAB] : ADMIN_TABS
+  }, [tours, selectedTourId])
 
   const title = isAdminLoggedIn
     ? 'לוח בקרה ואישור מושבים באוטובוס'
@@ -122,7 +147,7 @@ export function Header() {
             aria-label="ניווט לוח בקרה"
             className="hidden md:flex bg-slate-800 p-1 rounded-2xl border border-slate-700/80 items-center gap-1"
           >
-            {ADMIN_TABS.map(tab => {
+            {visibleTabs.map(tab => {
               const Icon = tab.icon
               const isActive = activeTab === tab.id
               return (
@@ -186,7 +211,7 @@ export function Header() {
           aria-label="ניווט לוח בקרה"
           className="md:hidden bg-slate-800/90 border-t border-slate-800 p-1.5 flex items-center justify-around text-xs"
         >
-          {ADMIN_TABS.map(tab => {
+          {visibleTabs.map(tab => {
             const isActive = activeTab === tab.id
             return (
               <Link

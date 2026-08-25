@@ -43,6 +43,8 @@ export default function App() {
             <Route path="seats" element={null} />
             <Route path="tours" element={null} />
             <Route path="bus-types" element={null} />
+            {/* Day-of-tour only; AdminDashboardPage redirects away otherwise. */}
+            <Route path="attendance" element={null} />
             <Route path="report" element={null} />
           </Route>
           <Route

@@ -1,4 +1,4 @@
-import { describe, it, expect, vi, beforeEach } from 'vitest'
+import { describe, it, expect, vi, beforeEach, afterEach } from 'vitest'
 import { render, screen, waitFor, fireEvent } from '@testing-library/react'
 import userEvent from '@testing-library/user-event'
 import { AdminDashboardPage } from './AdminDashboardPage'
@@ -8,9 +8,13 @@ import { busService } from '../services/bus.service'
 import type { Tour } from '../types/tour.types'
 
 let currentPath = '/admin/seats'
+// The attendance tab (F12) is day-of-tour only, so the container navigates away
+// from /admin/attendance on any other day — the suite asserts on this spy.
+const navigateMock = vi.fn()
 
 vi.mock('react-router-dom', () => ({
-  useLocation: () => ({ pathname: currentPath })
+  useLocation: () => ({ pathname: currentPath }),
+  useNavigate: () => navigateMock
 }))
 
 vi.mock('../services/tour.service', () => ({
@@ -32,6 +36,9 @@ vi.mock('../components/SeatManagement', () => ({
 }))
 vi.mock('../components/PassengerManifestReport', () => ({
   PassengerManifestReport: () => <div>MANIFEST_REPORT</div>
+}))
+vi.mock('../components/AttendanceManagement', () => ({
+  AttendanceManagement: () => <div>ATTENDANCE_MANAGEMENT</div>
 }))
 vi.mock('../components/TourManagement', () => ({
   TourManagement: (props: {
@@ -143,5 +150,48 @@ describe('AdminDashboardPage', () => {
     await user.click(await screen.findByRole('button', { name: 'מחק טיול' }))
 
     await waitFor(() => expect(removeTourMock).toHaveBeenCalledWith('t1'))
+  })
+
+  // F12 / AC-12: the attendance tab is a day-of-tour tool. The Header hides it
+  // off-day, but this container is the actual guard — it covers direct
+  // navigation to /admin/attendance and a tab left open past midnight.
+  describe('attendance tab date guard', () => {
+    beforeEach(() => {
+      currentPath = '/admin/attendance'
+      useStore.setState({ tours: [buildTour()], selectedTourId: 't1' })
+      vi.useFakeTimers({ shouldAdvanceTime: true })
+    })
+
+    afterEach(() => {
+      vi.useRealTimers()
+    })
+
+    it('renders the attendance tab on the tour date itself', async () => {
+      vi.setSystemTime(new Date('2026-08-15T08:00:00'))
+      render(<AdminDashboardPage />)
+
+      expect(await screen.findByText('ATTENDANCE_MANAGEMENT')).toBeInTheDocument()
+      expect(navigateMock).not.toHaveBeenCalled()
+    })
+
+    it('redirects to the seat map when the selected tour is not running today', async () => {
+      vi.setSystemTime(new Date('2026-08-16T08:00:00'))
+      render(<AdminDashboardPage />)
+
+      await waitFor(() =>
+        expect(navigateMock).toHaveBeenCalledWith('/admin/seats', { replace: true })
+      )
+      expect(screen.queryByText('ATTENDANCE_MANAGEMENT')).not.toBeInTheDocument()
+    })
+
+    it('does not redirect before the first tour fetch resolves', async () => {
+      // An empty list at boot must not bounce the guide off the tab she just
+      // opened — the guard waits until tours are actually loaded.
+      vi.setSystemTime(new Date('2026-08-16T08:00:00'))
+      useStore.setState({ tours: [] })
+      render(<AdminDashboardPage />)
+
+      expect(navigateMock).not.toHaveBeenCalled()
+    })
   })
 })

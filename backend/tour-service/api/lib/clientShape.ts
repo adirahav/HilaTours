@@ -138,6 +138,56 @@ export function toClientSeat(seat: Record<string, any>, busUuid?: string) {
 }
 
 /**
+ * One snapshotted attendance passenger as seen by a client. CONTAINS PII, so
+ * this shape must only ever reach an `attendance:view`-authorized REST response
+ * or the per-bus ADMIN socket room — never the public room (SEV-001).
+ *
+ * `sessionId`/`seatId` are serialized as uuids, never the internal ObjectId
+ * refs — pass them in from the resolved session/seat.
+ */
+export function toClientAttendanceRecord(
+  record: Record<string, any>,
+  sessionUuid?: string,
+  seatUuid?: string,
+) {
+  return {
+    id: record.uuid,
+    ...(sessionUuid ? { sessionId: sessionUuid } : {}),
+    seatId: seatUuid ?? null,
+    seatPosition: record.seatPosition,
+    passengerName: record.passengerName,
+    passengerPhone: record.passengerPhone ?? null,
+    pickupPointName: record.pickupPointName ?? null,
+    notes: record.notes ?? null,
+    bookingGroupId: record.bookingGroupId ?? null,
+    isPresent: record.isPresent ?? false,
+    checkedInAt: record.checkedInAt ?? null,
+  }
+}
+
+/**
+ * Attendance session as seen by a client. `tourId`/`busId` are serialized as
+ * the owning tour's/bus's uuid, never the internal ObjectId refs. `createdBy`
+ * is internal admin attribution and is deliberately withheld, exactly like
+ * `Seat.assignedBy`.
+ */
+export function toClientAttendanceSession(
+  session: Record<string, any>,
+  tourUuid: string,
+  busUuid: string,
+  records: Record<string, any>[] = [],
+) {
+  return {
+    id: session.uuid,
+    tourId: tourUuid,
+    busId: busUuid,
+    title: session.title,
+    createdAt: session.createdAt,
+    records,
+  }
+}
+
+/**
  * PII-safe seat projection for UNAUTHENTICATED responses (SEV-001 / the
  * PublicSeat contract schema). Identity + position + status only — never
  * passengerName, passengerPhone, notes, pickupPointName, requestedAt,

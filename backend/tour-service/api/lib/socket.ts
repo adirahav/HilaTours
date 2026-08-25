@@ -83,3 +83,29 @@ export function emitSeatUpdate(busUuid: string, seats: ClientSeat[]): void {
   io.to(adminRoom(busUuid)).emit("seat:update", { busId: busUuid, seats })
   io.to(publicRoom(busUuid)).emit("seat:update", { busId: busUuid, seats: seats.map(toPublicSeat) })
 }
+
+/**
+ * Broadcasts an attendance mutation for a bus (plan 038), so a second device
+ * viewing the same bus's attendance tab updates live instead of polling.
+ *
+ * ADMIN ROOM ONLY — deliberately no public/stripped variant. The payload
+ * carries passengerName/passengerPhone/pickupPointName for every snapshotted
+ * passenger; emitting it to `publicRoom` would reintroduce the exact PII leak
+ * the SEV-001 split above exists to prevent. There is no passenger-facing
+ * attendance view, so nothing is lost by scoping it this way.
+ *
+ * `session` is the full updated session, or `null` paired with
+ * `deletedSessionId` when a session was hard-deleted.
+ */
+export function emitAttendanceUpdate(
+  busUuid: string,
+  session: Record<string, unknown> | null,
+  deletedSessionId?: string,
+): void {
+  if (!io) return
+  io.to(adminRoom(busUuid)).emit("attendance:update", {
+    busId: busUuid,
+    session,
+    deletedSessionId: deletedSessionId ?? null,
+  })
+}

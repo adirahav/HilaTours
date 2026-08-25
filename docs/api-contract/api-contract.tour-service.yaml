@@ -306,6 +306,138 @@ components:
         isDefault:
           type: boolean
 
+    AttendanceSession:
+      type: object
+      description: >
+        A day-of-tour passenger check-in board for one bus (F12 / AC-12..14).
+        Creating a session SNAPSHOTS every `taken`/`reserved` seat that
+        currently has a `passengerName` on that bus into immutable
+        `AttendanceRecord`s — later edits to a seat's passenger do NOT
+        retroactively change an existing session.
+
+        Multiple sessions per bus are expected and intentional (one for the
+        morning departure, one for the evening return); titles are free-form
+        and carry no uniqueness constraint.
+
+        Sessions are HARD-deleted (session + its records), unlike the
+        soft-deleted domain collections — they are disposable working
+        documents, not audited records.
+        Design source: raw_from_ai_studio/src/components/AttendanceManagement.tsx.
+      properties:
+        id:
+          type: string
+          format: uuid
+        tourId:
+          type: string
+          format: uuid
+        busId:
+          type: string
+          format: uuid
+        title:
+          type: string
+          example: "בדיקת בוקר - תחנות איסוף"
+        createdAt:
+          type: string
+          format: date-time
+        records:
+          type: array
+          items:
+            $ref: '#/components/schemas/AttendanceRecord'
+      # `createdBy` (the acting admin) is stored internally and, like
+      # `Seat.assignedBy`, is never serialized to the client.
+
+    AttendanceRecord:
+      type: object
+      description: >
+        One snapshotted passenger within a session. CONTAINS PII
+        (`passengerName`/`passengerPhone`/`pickupPointName`), so it is only
+        ever returned from `attendance:view`-authorized routes and only ever
+        broadcast to the per-bus ADMIN socket room — never the public,
+        PII-stripped room (SEV-001).
+
+        "Missing" is represented as `isPresent: false`, not a third status
+        value — the UI is strictly present/missing.
+      properties:
+        id:
+          type: string
+          format: uuid
+        sessionId:
+          type: string
+          format: uuid
+        seatId:
+          type: string
+          format: uuid
+          description: The seat this record was snapshotted from.
+        seatPosition:
+          type: string
+          description: Seat label at snapshot time (matches `Seat.position`).
+          example: "3A"
+        passengerName:
+          type: string
+        passengerPhone:
+          type: string
+          nullable: true
+        pickupPointName:
+          type: string
+          nullable: true
+        notes:
+          type: string
+          nullable: true
+        bookingGroupId:
+          type: string
+          nullable: true
+          description: >
+            Shared booking-party id copied from the seat when present. `Seat`
+            carries no such field today, so this is normally null and clients
+            fall back to grouping by phone, then by name.
+        isPresent:
+          type: boolean
+          default: false
+        checkedInAt:
+          type: string
+          format: date-time
+          nullable: true
+          description: Set when `isPresent` flips to true; cleared to null when it flips back or on reset.
+
+    AttendanceSessionInput:
+      type: object
+      required:
+        - tourId
+        - busId
+        - title
+      properties:
+        tourId:
+          type: string
+          format: uuid
+        busId:
+          type: string
+          format: uuid
+        title:
+          type: string
+          example: "בדיקת בוקר - תחנות איסוף"
+
+    AttendancePresenceRequest:
+      type: object
+      description: >
+        The single presence mutation behind all three UI gestures — an
+        individual toggle, a whole-party (family) toggle, and a per-station
+        batch check/uncheck. The caller resolves which records the gesture
+        covers; there is no separate per-station endpoint.
+
+        Last-write-wins: concurrent toggles from two devices overwrite rather
+        than merge. Acceptable because this is an idempotent boolean set.
+      required:
+        - recordIds
+        - isPresent
+      properties:
+        recordIds:
+          type: array
+          items:
+            type: string
+            format: uuid
+        isPresent:
+          type: boolean
+
     BusWithPublicSeats:
       description: >
         A Bus as embedded in a public tour response, plus its seats in the
@@ -526,9 +658,6 @@ components:
           type: string
           enum: [taken, pending]
           description: Target status. Defaults to `taken` if omitted.
-      required:
-        - passengerName
-        - passengerPhone
 
     SeatSwapMoveRequest:
       type: object
@@ -828,6 +957,241 @@ paths:
           description: Missing/invalid admin JWT
         '404':
           description: Bus type not found or already deleted
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/Error'
+
+  /attendance/session:
+    get:
+      tags: [Attendance]
+      summary: List a bus's attendance sessions (records included)
+      description: >
+        Returns every session for the given tour+bus, each with its full
+        `records` array populated. Requires `attendance:view`.
+
+        NOT date-gated: the "only on the tour's own day" rule is a UI-level
+        tab-visibility convenience only (plan 038, Open Question 2). A guide may
+        legitimately review last night's session after midnight, so the server
+        enforces permissions but never the date.
+      security:
+        - bearerAuth: []
+      parameters:
+        - name: tourId
+          in: query
+          required: true
+          schema:
+            type: string
+            format: uuid
+        - name: busId
+          in: query
+          required: true
+          schema:
+            type: string
+            format: uuid
+      responses:
+        '200':
+          description: Sessions for this bus, newest first
+          content:
+            application/json:
+              schema:
+                type: array
+                items:
+                  $ref: '#/components/schemas/AttendanceSession'
+        '401':
+          description: Missing/invalid admin JWT
+        '403':
+          description: Caller lacks `attendance:view`
+    post:
+      tags: [Attendance]
+      summary: Create a session, snapshotting the bus's booked passengers
+      description: >
+        Snapshots every `taken`/`reserved` seat with a non-null `passengerName`
+        on this bus into `AttendanceRecord`s, each starting at
+        `isPresent: false`. Requires `attendance:manage`.
+
+        No uniqueness constraint on `title` — multiple concurrent sessions per
+        bus are an intended feature. Emits `attendance:update` to the per-bus
+        ADMIN socket room.
+      security:
+        - bearerAuth: []
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: '#/components/schemas/AttendanceSessionInput'
+      responses:
+        '200':
+          description: Session created, with its snapshotted records
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/AttendanceSession'
+        '400':
+          description: Missing/invalid fields
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/Error'
+        '401':
+          description: Missing/invalid admin JWT
+        '403':
+          description: Caller lacks `attendance:manage`
+        '404':
+          description: Tour or bus not found
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/Error'
+
+  /attendance/session/{sessionId}:
+    get:
+      tags: [Attendance]
+      summary: Get one attendance session with its records
+      security:
+        - bearerAuth: []
+      parameters:
+        - name: sessionId
+          in: path
+          required: true
+          schema:
+            type: string
+            format: uuid
+      responses:
+        '200':
+          description: The session
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/AttendanceSession'
+        '401':
+          description: Missing/invalid admin JWT
+        '403':
+          description: Caller lacks `attendance:view`
+        '404':
+          description: Session not found
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/Error'
+    delete:
+      tags: [Attendance]
+      summary: Hard-delete a session and all of its records
+      description: >
+        Unlike the soft-deleted domain collections, this REMOVES the session
+        document and its records outright — they are disposable working
+        documents, not audited history. Records only ever point AT seats, never
+        the reverse, so no `Seat` is orphaned by this. Requires
+        `attendance:manage`. Emits `attendance:update` carrying
+        `deletedSessionId` to the per-bus ADMIN socket room.
+      security:
+        - bearerAuth: []
+      parameters:
+        - name: sessionId
+          in: path
+          required: true
+          schema:
+            type: string
+            format: uuid
+      responses:
+        '204':
+          description: Session and records deleted
+        '401':
+          description: Missing/invalid admin JWT
+        '403':
+          description: Caller lacks `attendance:manage`
+        '404':
+          description: Session not found
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/Error'
+
+  /attendance/session/{sessionId}/reset:
+    post:
+      tags: [Attendance]
+      summary: Clear every presence mark in a session
+      description: >
+        Sets `isPresent: false` and `checkedInAt: null` on all of the session's
+        records, keeping the session and its passenger snapshot intact — this is
+        "start the check over", not a delete. Requires `attendance:manage`.
+        Emits `attendance:update` to the per-bus ADMIN socket room.
+      security:
+        - bearerAuth: []
+      parameters:
+        - name: sessionId
+          in: path
+          required: true
+          schema:
+            type: string
+            format: uuid
+      responses:
+        '200':
+          description: Session after reset
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/AttendanceSession'
+        '401':
+          description: Missing/invalid admin JWT
+        '403':
+          description: Caller lacks `attendance:manage`
+        '404':
+          description: Session not found
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/Error'
+
+  /attendance/session/{sessionId}/presence:
+    post:
+      tags: [Attendance]
+      summary: Set presence on one or many records
+      description: >
+        The single presence mutation behind all three UI gestures — individual
+        toggle, whole-party (family) toggle, and per-station batch
+        check/uncheck — differing only in the resolved `recordIds` list. Sets
+        `checkedInAt` when flipping to present and clears it to null when
+        flipping back. Requires `attendance:manage`. Emits `attendance:update`
+        to the per-bus ADMIN socket room.
+
+        Returns the FULL updated session so the caller can replace its copy
+        wholesale rather than patching individual records.
+      security:
+        - bearerAuth: []
+      parameters:
+        - name: sessionId
+          in: path
+          required: true
+          schema:
+            type: string
+            format: uuid
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: '#/components/schemas/AttendancePresenceRequest'
+      responses:
+        '200':
+          description: Session after the presence update
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/AttendanceSession'
+        '400':
+          description: Empty/invalid `recordIds`, or ids not belonging to this session
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/Error'
+        '401':
+          description: Missing/invalid admin JWT
+        '403':
+          description: Caller lacks `attendance:manage`
+        '404':
+          description: Session not found
           content:
             application/json:
               schema:

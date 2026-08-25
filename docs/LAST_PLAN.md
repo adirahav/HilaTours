@@ -1,81 +1,95 @@
-# 037 — Fix: custom BusType grid gaps (disabled seat slots) lost by the time the seat map renders
+# 038 — Attendance Management (בדיקת נוכחות): new `Header` tab, tour-day-only, server-persisted sessions
 
-Status: draft
+Status: active
 Owner: orchestrator
-Last updated: 2026-08-22
-Scope-Agents: tour-service, frontend, qa
+Last updated: 2026-08-24
+Scope-Agents: frontend, tour-service, qa, security
 
 ## Goal
-
-Reproduce and fix the admin-reported bug (screenshots, 2026-08-22): a mini-bus `BusType` back row configured with a gap in the middle (e.g. seat 2, empty slot, seat 4) renders as packed consecutive seats on the passenger/admin seat map instead of showing the gap. Implement the human-approved final fix direction from `.plan/036-2026-08-22-preserve-custom-bustype-grid-gaps-disabled-slots-in-seatlayout.md`: persist `busTypeId` permanently on `Bus`, and derive the rendered grid (row/col, including gaps) by joining LIVE to the current `BusType` document at render time — never by snapshotting.
-
-This plan supersedes `.plan/036-2026-08-22-preserve-custom-bustype-grid-gaps-disabled-slots-in-seatlayout.md` (marked `Status: superseded` below) and turns its already-approved fix direction into concrete, file-level steps, resolving both of its Open Questions.
+Give the guide/admin a mobile-friendly, real-time attendance tool for the day of a tour: a new top-level `Header` tab ("בדיקת נוכחות") that is visible **only** when the current date equals the selected tour's date, and hidden otherwise. Attendance sessions and per-passenger records are persisted server-side in `tour-service` (new `attendanceSession`/`attendanceRecord` collections, broadcast over the existing socket.io channel) so multiple devices watching the same bus stay in sync in real time — replacing the prototype's `localStorage`/tab-sync approach in `raw_from_ai_studio/src/components/AttendanceManagement.tsx`. Per PRD Screen 5 / F12–AC-12..14.
 
 ## Scope
-
-- `backend/tour-service/api/models/bus.model.ts`: add persistent `busTypeId: Types.ObjectId | null` field (`ref: "BusType"`, `default: null`), distinct from the existing transient `BusInput.busTypeId` write-input.
-- `backend/tour-service/api/bus/bus.service.ts`: `createBus`/`updateBus` (the `busTypeId`-present branch) additionally persist `busTypeId` onto the `Bus` document itself, alongside the already-existing `seatLayout`/`Seat` reseed logic (unchanged). Manual buses (raw `seatLayout`, no template) store `busTypeId: null`.
-- `backend/tour-service/api/busType/busType.service.ts`: add a new resolver (e.g. `resolveBusTypeForBusRender`) that calls `resolveDoc(BusType, busTypeUuid, message)` with **no** `{ deletedAt: null }` filter — so a bus referencing a soft-deleted template still resolves it. Keep `resolveBusTypeDoc`/`getBusType`/`listBusTypes`/`seatLayoutForBusTypeUuid` unchanged (those stay scoped to non-deleted templates, which is correct for the admin picker and for new-bus creation).
-- `backend/tour-service/api/lib/clientShape.ts` (`toClientBus`): resolve and expose the referenced `BusType`'s live grid alongside the bus so callers never need a second authenticated fetch. Concrete resolution of Open Question 2 below: **do the row/col join server-side** and embed the resulting per-seat `row`/`col` (or the raw grid: `standardRowsCount`/`doorRow`/`backRowSeatsCount`/`disabledSeatSlots`) directly on the bus response — both the public (`GET /tour`, `GET /tour/:tourId`) and admin (`GET /tour/:tourId/buses/:busId`) shapes, since passengers never authenticate and can't fetch `/busType` themselves. Emit `busTypeId: string uuid | null` too (external identity, not the internal ObjectId), so the admin UI can still show "built from template X" if useful later.
-- `backend/tour-service/api/busType/busType.service.ts` (`seatPositionsFromBusType`/`buildNumberedGrid`-equivalent): extract a shared **row/col/gap walk** function reusable both for seat counting (existing) and for producing a `{ seatNumber, row, col }[]` map (new) — this is the one algorithm the render join calls, so there is exactly one place that numbers a template's seats, never two copies that could drift.
-- `frontend/src/lib/tourMapper.ts` (`mapSeats`/`mapSeatsInternal`): when the raw bus payload carries a grid (from the new server-side join), use the server-supplied `row`/`col` per seat instead of calling `generateBusSeats(totalSeats)`. When absent (manual bus, `busTypeId: null`), keep today's `generateBusSeats` fallback — unchanged, so regression risk for manually-configured buses is zero.
-- `frontend/src/types/bus.types.ts` / `frontend/src/lib/tourMapper.ts` (`RawBus`/`RawSeat`): add the new optional grid/row/col fields to the raw shapes.
-- `frontend/src/components/BusTypeManagement.tsx` (or wherever a `BusType` is edited): add a warning shown when editing a template that is referenced by one or more buses (e.g. "דגם זה בשימוש ב-N אוטובוסים; שינויים כאן ישנו מיידית את מפת המושבים שלהם."), per the human's "warn, don't block" direction. Requires a small count-by-`busTypeId` lookup — either a new lightweight backend endpoint/field (e.g. `busCount` on the `BusType` list response) or a client-side count over the already-loaded bus list in the store, whichever is cheaper to wire correctly; decide during implementation (see Open Question 1 below is resolved, this one is a smaller implementation-order detail, not a design open question).
-- `frontend/src/components/BusMap.tsx`: audit the hardcoded back-row column range (today driven by `BACK_ROW_SEAT_COUNT = 5` from `busLayoutHelper.ts`) — for a BusType-derived bus, render the back row using the actual `backRowSeatsCount`/gaps from the joined grid, not the hardcoded constant. This is Open Question 1 from plan 036, resolved as an implementation task, not left open.
-- `docs/api-contract/api-contract.tour-service.yaml`: add `busTypeId: string, format: uuid, nullable: true` to the `Bus` schema, plus the new grid fields on seats/bus (exact shape finalized during implementation — either per-seat `row`/`col` or a nested `busTypeGrid` object; both are additive, non-breaking).
-- `.rule/database-rules.md`: document the new persistent `Bus.busTypeId` field and the live-join behavior (retroactive edits, soft-delete-tolerant resolution).
-- `docs/PRD.md` (F11) and any BusType doc language claiming "editing a BusType never retroactively changes buses already created from it" (plan 034's Open Question 2, the BusType schema doc): correct to state the opposite — edits DO retroactively change the rendered seat map of every bus referencing that template, and the admin is warned (not blocked) before saving such an edit.
+- `backend/tour-service/api/models/attendanceSession.model.ts` (new): uuid identity, soft-delete-free (sessions are hard-deleted per PRD "sessions can be ... deleted"), fields `tourId` (ObjectId ref Tour), `busId` (ObjectId ref Bus), `title`, `createdAt`, `createdBy` (admin uuid string, internal-only like `Seat.assignedBy`).
+- `backend/tour-service/api/models/attendanceRecord.model.ts` (new): uuid identity, `sessionId` (ObjectId ref AttendanceSession), snapshot fields captured at session-creation time — `seatId` (ObjectId ref Seat), `seatPosition`, `passengerName`, `passengerPhone`, `pickupPoint`, `bookingGroupId` (nullable — mirrors `Seat`'s existing party-grouping signal if present, else derived at snapshot time the same way the prototype does: phone, else name), `isPresent: boolean` (default `false`), `checkedInAt: Date | null`.
+- `backend/tour-service/api/attendance/attendance.service.ts`, `attendance.controller.ts`, `attendance.routes.ts` (new): mirrors `busType`/`bus` module conventions (`resolveObjectId`/`resolveDoc`, `toClientX` shaping, `requirePermission`).
+  - `createSession(tourId, busId, title, adminUuid)`: snapshots every `taken`/`reserved` `Seat` with a non-null `passengerName` on that bus into `AttendanceRecord`s.
+  - `listSessions(tourId, busId)`, `getSession(sessionId)` (records included/populated).
+  - `resetSession(sessionId)`: sets every record's `isPresent=false`, `checkedInAt=null`.
+  - `deleteSession(sessionId)`: hard-deletes the session and its records.
+  - `setRecordsPresence(sessionId, recordIds[], isPresent)`: single mutation used for individual toggle, party toggle (multiple `recordIds`), and station batch-check (caller resolves the id list from station membership) — one code path, no separate per-station DB method.
+- `backend/tour-service/api/app.ts`: mount new `attendanceRouter`.
+- `backend/tour-service/api/lib/socket.ts`: add `attendance:update` broadcast (admin-room only, per-bus — reuses `adminRoom(busUuid)`; no public/PII-stripped variant needed since this tab is admin/guide-only) emitted after every mutating attendance call, so a second device viewing the same bus's attendance tab updates live instead of polling.
+- `backend/tour-service/api/auth/permissions.ts`: add `attendance:view`/`attendance:manage` permissions, granted to the existing admin role the same way `bus:*`/`busType:*` were (plan 032/034 pattern).
+- `docs/api-contract/api-contract.tour-service.yaml`: add `AttendanceSession`/`AttendanceRecord` schemas and `/attendance/session` (`GET`/`POST`), `/attendance/session/{sessionId}` (`GET`/`DELETE`), `/attendance/session/{sessionId}/reset` (`POST`), `/attendance/session/{sessionId}/presence` (`POST`, body `{recordIds: string[], isPresent: boolean}`) paths.
+- `frontend/src/types/attendance.types.ts` (new), `frontend/src/services/attendance.service.ts` (new), `frontend/src/store/slices/attendance.slice.ts` (new) — mirrors `busType.types.ts`/`busType.service.ts`/`busType.slice.ts`, plus a socket listener for `attendance:update` (mirrors the existing seat socket-sync pattern) instead of the prototype's `storage` tab-sync event.
+- `raw_from_ai_studio/src/components/AttendanceManagement.tsx` → adapted into `frontend/src/components/admin/AttendanceManagement.tsx`: remove `lib/storage` (`getAttendanceSessions`/`createAttendanceSession`/`batchCheckGroupSeats`/`batchCheckPickupPoint`/`resetAttendanceSession`/`deleteAttendanceSession`) usage entirely; wire to the new store slice/service/socket. Keep the visual structure (session pills, station cards, party toggle cards, search bar, copy-summary button) as-is — only the persistence layer changes.
+- `frontend/src/components/common/Header.tsx`: add a new `AdminTab` entry `'attendance'` → `/admin/attendance`, rendered conditionally — only shown when `today === selectedTour.date` (date-only compare, ignoring time-of-day) for the currently selected tour; hidden from both the desktop `nav` and the mobile tab bar otherwise. Route guard in the page/router layer redirects away from `/admin/attendance` if the date condition stops holding (e.g. tab left open past midnight).
+- `frontend/src/App.tsx` (or wherever `/admin/*` routes are declared — confirm exact router file during implementation): add the `/admin/attendance` route rendering the new component, gated by the same date check server-side isn't needed (read-only UI gate), but the underlying API endpoints are still permission-gated regardless of date (date is a UI convenience, not a security boundary — see Open Question 2).
+- No changes to `user-management-service` or `common-service`.
 
 ## Assumptions
+- `attendanceSession`/`attendanceRecord` are new top-level Mongo collections in `tour-service` (same DB as `Tour`/`Bus`/`Seat`), not embedded documents — consistent with how `busType` was added as its own collection in plan 034, and needed because records reference seats by `ObjectId`.
+- "Missing" status in the PRD is represented as `isPresent: false` (boolean), not a tri-state enum — the prototype only ever shows present/missing, never a third state, so a boolean is sufficient and simpler than introducing a `status` enum.
+- A session snapshot is a **point-in-time copy**: later changes to `Seat.passengerName`/`pickupPointName` (e.g. an admin edits a booking after the session was created) do **not** retroactively update existing `AttendanceRecord`s. This matches the prototype's snapshot semantics ("Creating a session snapshots every taken/reserved seat ... at that moment").
+- `bookingGroupId` does not currently exist on the `Seat` model (confirmed: `seat.model.ts` has no such field). The party-grouping fallback chain from the prototype (`bookingGroupId` → phone → name) is preserved, but in production `bookingGroupId` will simply always be absent until/unless a future ticket adds real booking-group linkage to `Seat` — so today's grouping effectively degrades to phone-then-name. This is called out explicitly rather than silently dropping the `bookingGroupId` tier, so no rework is needed if that field is added later.
+- Real-time sync only needs to reach other **admin** clients (the guide/office viewing the same bus's attendance from two phones) — there is no passenger-facing attendance view, so only the existing `adminRoom` broadcast pattern is reused; no new public/stripped variant is needed.
+- The `/admin/attendance` tab reuses the existing tour/bus selector pattern (`selectedTourId`/`selectedBusId` from the store) already used by `SeatManagement`/`AttendanceManagement`'s own prototype props, rather than inventing a new selector.
 
-- No production data exists yet (per plan 036's Rollback note), so no migration/backfill is needed for the new `Bus.busTypeId` field — existing test/dev buses simply have `busTypeId: null` and keep rendering via the unchanged `generateBusSeats` fallback.
-- The existing `seatLayout.standardRowsCount`/`doorRow`/`backRowSeatsCount`/`disabledSeatSlots` fields already persisted as "provenance" by `seatLayoutFromBusType` (see `backend/tour-service/api/busType/busType.service.ts`) are a frozen snapshot from creation time and are **not** the source of truth for rendering going forward — the live `BusType` join (via `busTypeId`) is. These snapshot fields are left in place (harmless, ignored by the new render path) rather than removed, to avoid an unrelated migration in this fix.
-- `Seat.position` stays a flat, sequential string ("1".."N") — no schema change needed there; only the row/col *presentation* derived from it changes.
-- The shared row/col/gap walk (backend `seatPositionsFromBusType`-adjacent, frontend `busTypeLayout.ts`'s `buildNumberedGrid`) must number seats identically to how `seatLayoutFromBusType` originally produced `positions` — this is already documented as a shared convention in both files' comments, so extending it is additive, not a redesign.
+## Open Questions (resolved 2026-08-24)
+1. Should the tour-day visibility check use the server's/browser's local date or a fixed timezone (e.g. Asia/Jerusalem), given tours could be viewed by an admin abroad?
+- Recommended: compare using the browser's local date against the tour's stored date at day granularity (`toDateString()`-style comparison) — simplest, matches how the rest of the app already renders dates (`toLocaleDateString('he-IL')`), and the guide/admin using this feature in the field is always physically local to the tour.
+- *HUMAN ANSWER:* Approved as recommended — browser-local date, day-granularity compare.
 
-## Open Questions
+2. Should the `/attendance/*` API endpoints themselves enforce "only callable on the tour's date," or is that purely a UI-level tab-visibility convenience with no server-side date gate?
+- Recommended: UI-only gate — the server enforces the existing `attendance:view`/`attendance:manage` permission checks (same as every other admin endpoint) but does not additionally reject requests based on date, since a guide might legitimately review yesterday's session after midnight, or an admin might reasonably need to pre-create a session shortly before the tour date rolls over; a hard server-side date lock adds complexity with no real security benefit (date is not a trust boundary here).
+- *HUMAN ANSWER:* Approved as recommended — UI-only gate, no server-side date enforcement.
 
-1. Does `BusMap.tsx`'s back-row rendering need to become driven by the actual `backRowSeatsCount`/gap positions from the joined `BusType`, rather than the hardcoded `BACK_ROW_SEAT_COUNT = 5` from `busLayoutHelper.ts`, for BusType-derived buses?
-   - Recommended: yes — resolved in Scope above as a concrete `BusMap.tsx` audit/fix step; `busLayoutHelper.ts`'s hardcoded generic layout remains correct and untouched for manual (non-BusType) buses only.
-2. Should the row/col join happen client-side (frontend re-derives grid from a fetched `BusType`) or server-side (backend embeds the resolved grid/row/col on the bus response)?
-   - Recommended: server-side. Passengers never authenticate and today have no path to fetch `/busType`, so a client-side join would require either a new public BusType-read endpoint (widening the public API surface for template internals) or duplicating two algorithms that must never drift (the exact class of bug this ticket is about). Embedding the resolved grid on the existing public/admin bus responses is additive, keeps the numbering algorithm in exactly one place (backend), and needs no new route.
+3. Does creating a new session need to block/warn if an identical-purpose session (e.g. same title) already exists for that bus, or is unlimited free-form session creation fine as in the prototype?
+- Recommended: no blocking — keep the prototype's behavior of unlimited free-form sessions per bus (multiple sessions are an explicit PRD feature: "one for morning departure, one for the evening return"), with no uniqueness constraint on `title`.
+- *HUMAN ANSWER:* Approved as recommended — no blocking, unlimited free-form sessions, no title uniqueness constraint.
 
 ## Steps
-
-1. **tour-service — schema**: add `busTypeId` to `backend/tour-service/api/models/bus.model.ts`.
-2. **tour-service — write path**: `backend/tour-service/api/bus/bus.service.ts` `createBus`/`updateBus` persist `busTypeId` onto the `Bus` doc when the `busTypeId`-present branch runs; `null` otherwise (explicit, not just omitted, so old docs and manual buses are unambiguous).
-3. **tour-service — soft-delete-tolerant resolver**: add the new resolver in `backend/tour-service/api/busType/busType.service.ts` (no `deletedAt` filter), used only by the render join, never by the admin picker/list.
-4. **tour-service — shared numbering helper**: extract the row/col/gap walk in `busType.service.ts` into a reusable function producing `{ seatNumber, row, col }[]`, used by both `seatPositionsFromBusType` (existing count) and the new render join.
-5. **tour-service — response shape**: wire the join into `toClientBus` (`backend/tour-service/api/lib/clientShape.ts`), covering all three read paths: `listBuses`, `listBusesWithPublicSeats` (public, PII-safe), `getBusWithSeats` (admin). Update `docs/api-contract/api-contract.tour-service.yaml`.
-6. **frontend — types & mapper**: extend `RawBus`/`RawSeat` in `frontend/src/lib/tourMapper.ts` / `frontend/src/types/bus.types.ts`; `mapSeatsInternal` prefers server-supplied row/col when present, falls back to `generateBusSeats` otherwise.
-7. **frontend — BusMap back row**: audit and fix `frontend/src/components/BusMap.tsx` per Open Question 1's resolution.
-8. **frontend — edit warning**: add the "in use by N buses" warning to `frontend/src/components/BusTypeManagement.tsx`.
-9. **docs**: correct `docs/PRD.md` F11 and `.rule/database-rules.md` per Scope.
+1. **backend/tour-service — models** (tour-service agent):
+   - `models/attendanceSession.model.ts` and `models/attendanceRecord.model.ts` per Scope, both using `applyUuidIdentity` like every existing model; add indexes `{ tourId: 1, busId: 1 }` on session and `{ sessionId: 1 }` on record for fast per-bus/per-session lookups.
+2. **backend/tour-service — permissions** (tour-service agent):
+   - `auth/permissions.ts`: add `attendance:view`, `attendance:manage`; grant to admin role alongside existing `bus:*`/`busType:*` grants.
+3. **backend/tour-service — service/controller/routes** (tour-service agent):
+   - `attendance/attendance.service.ts`: `createSession` (snapshot logic reading `Seat.find({busId, status: {$in: ["taken","reserved"]}, passengerName: {$ne: null}})`, deriving `bookingGroupId` fallback per Assumptions), `listSessions`, `getSession`, `resetSession`, `deleteSession`, `setRecordsPresence`.
+   - `attendance.controller.ts` + `attendance.routes.ts`: REST endpoints under `requirePermission("attendance:view"|"attendance:manage")` per method, mirroring `busType.routes.ts` structure.
+   - `app.ts`: mount `attendanceRouter`.
+4. **backend/tour-service — realtime** (tour-service agent):
+   - `lib/socket.ts`: add `emitAttendanceUpdate(busUuid, session)` (admin-room only); call it from every mutating `attendance.controller.ts` handler after a successful write.
+5. **docs/api-contract/api-contract.tour-service.yaml** (tour-service agent):
+   - Add `AttendanceSession`/`AttendanceRecord` schemas and the five paths listed in Scope.
+6. **frontend/src/types/attendance.types.ts, services/attendance.service.ts, store/slices/attendance.slice.ts** (frontend agent):
+   - Mirror `busType.*` conventions; slice subscribes to `attendance:update` socket events (reuse the existing socket client already used for `seat:update`) to merge live updates into store state.
+7. **frontend/src/components/admin/AttendanceManagement.tsx** (frontend agent, adapted from `raw_from_ai_studio/src/components/AttendanceManagement.tsx`):
+   - Remove all `lib/storage` imports/usage; replace `getAttendanceSessions`/`createAttendanceSession`/`batchCheckGroupSeats`/`batchCheckPickupPoint`/`resetAttendanceSession`/`deleteAttendanceSession` calls with the new slice/service calls (batch-check-station and party-toggle both call the single `setRecordsPresence` action with the appropriate `recordIds` list, per Scope's `attendance.service.ts` design).
+   - Keep grouping-by-pickup-point, grouping-by-party (bookingGroupId → phone → name fallback), search filter, `tel:` links, and `handleCopySummary` WhatsApp-text-report logic exactly as in the prototype — only the data source changes.
+8. **frontend/src/components/common/Header.tsx** (frontend agent):
+   - Add `'attendance'` to `ADMIN_TABS`, computed conditionally (not a static array entry) based on `today` vs. the selected tour's `date` per Open Question 1's recommendation; hide from both desktop `nav` and mobile tab bar when the condition is false.
+9. **frontend router file (confirm exact path, e.g. `frontend/src/App.tsx`)** (frontend agent):
+   - Add `/admin/attendance` route; if a user navigates there directly on a non-matching day, redirect to `/admin/seats` (defensive UI-only guard, consistent with Open Question 2).
+10. **security** (security agent): review new `attendance:*` permission wiring on all five endpoints, confirm the admin-room-only socket broadcast never reaches a non-admin/public socket (no PII leak of passenger names/phones), and confirm hard-delete-on-session-delete doesn't orphan any `Seat` reference (records only reference seats, never the reverse).
 
 ## Validation
-
-- Unit test (`backend/tour-service/api/__tests__/busType.test.ts` or new): create a `BusType` with a back row of 4 seats and a gap in the middle (mirroring the admin's screenshot), instantiate a `Bus` from it, confirm `Bus.busTypeId` persisted, fetch the bus via each of the three read paths, and confirm the returned grid has a gap at the expected cell — no seat at that column.
-- Unit test: soft-delete that `BusType`, re-fetch the bus, confirm the grid still resolves correctly (join survives soft-delete) while `listBusTypes`/`getBusType` correctly no longer surface the template to the admin picker.
-- Unit test: a bus created from raw `seatLayout` (no `busTypeId`) still returns `busTypeId: null` and no server-side grid — frontend fallback path exercised.
-- Frontend test (`frontend/src/lib/tourMapper.test.ts`): `mapSeatsInternal` uses server-supplied row/col when present; falls back to `generateBusSeats` when absent.
-- Manual/QA: reproduce the exact reported scenario — mini-bus BusType, 4-seat back row with a middle gap — create a bus from it, open the passenger seat map, visually confirm the gap renders as blank space.
-- Manual/QA: edit that same BusType (move the gap or change `backRowSeatsCount`) after the bus exists; confirm the admin sees the "in use by N buses" warning before saving, and confirm the bus's seat map changes accordingly after the edit (live-join, not frozen).
-- Regression: a manually-configured bus (`seatLayout.positions`, no `busTypeId`) still renders identically to today via the unchanged `generateBusSeats` fallback.
+- `backend/tour-service`: `npm --prefix backend/tour-service run test` covering `attendance.service.ts` — session creation snapshot correctness (only `taken`/`reserved` seats with a passenger are captured), party-grouping fallback chain, `setRecordsPresence` for individual/party/station-batch cases, reset (clears all `isPresent`), delete (removes session + records).
+- `frontend`: `npm --prefix frontend run lint`; manually confirm no `localStorage`/`lib/storage` reads remain in the adapted `AttendanceManagement.tsx`.
+- Manual (two-device real-time check): open the same bus's attendance tab on two browser windows, check in a passenger on one, confirm the other updates without a manual refresh.
+- Manual (date gating): confirm the "בדיקת נוכחות" tab is visible in `Header` only when the selected tour's date is today, and disappears/redirects when a different tour (or day) is selected.
 
 ## Risks
-
-- **tour-service — data-integrity/backward-compat risk**: the new resolver must be scoped precisely (soft-delete-tolerant only for the render join, never accidentally reused by `listBusTypes`/create-bus resolution) — reusing the wrong resolver in the wrong place would either let a soft-deleted template be picked for a *new* bus (wrong) or 404 an existing bus's render (the exact bug class this plan fixes, just moved). This is why `tour-service` is in scope even though "no new client-facing endpoints" are added — it's a response-shape and resolver-scoping change with real correctness risk, not a no-op.
-- **tour-service — concurrency**: none new — this fix only affects read-side derivation and the existing create/update write paths already covered by plan 035's tested reseed logic; no new mutation path is introduced.
-- **frontend — algorithm drift**: if the shared numbering helper (Step 4) isn't actually shared — i.e. if the frontend ever re-implements its own numbering instead of consuming the server's embedded row/col — this exact bug reappears in a new form. Server-side join (Open Question 2) is chosen specifically to eliminate this risk by construction.
-- **security — response surface**: embedding grid data on the public (`GET /tour`) bus response must stay PII-safe — grid/row/col are structural (not passenger data), so this doesn't reopen SEV-001, but the implementer must add the fields to `listBusesWithPublicSeats`'s response carefully, not by widening `PUBLIC_SEAT_FIELDS`/accidentally piping through admin-only fields.
+- **Permission gap**: new `attendance:*` mutation endpoints (create/reset/delete/presence) must be gated the same way `bus:*`/`busType:*` routes are, or an authenticated-but-unprivileged user could see or alter passenger presence/PII — flagged for the security agent (Scope-Agents includes `security`).
+- **PII over-broadcast**: `attendance:update` socket payload carries `passengerName`/`passengerPhone`/`pickupPoint` — must only ever be emitted to the admin room (never the public seat room), or this reintroduces the exact PII leak the SEV-001 split in `socket.ts` was built to prevent.
+- **Snapshot staleness vs. live seat edits**: because `AttendanceRecord` is a point-in-time copy (per Assumptions), an admin who edits a passenger's name/phone/pickup point on the seat map *after* a session was created will see stale data in that already-created session — acceptable per PRD's own "snapshots ... at that moment" wording, but worth flagging so it isn't mistaken for a bug during QA.
+- **Concurrent presence toggles**: two guides tapping the same party card on two phones near-simultaneously could race on `setRecordsPresence` — low real-world impact (idempotent boolean set, not a counter), but note it's a last-write-wins operation, not a merge.
 
 ## Rollout Order
-
-1. `tour-service` — schema (`busTypeId` on `Bus`), soft-delete-tolerant resolver, shared numbering helper, response-shape join, API contract update.
-2. `frontend` — mapper fallback logic, `BusMap.tsx` back-row fix, BusTypeManagement edit-in-use warning.
-3. `qa` — validation per above, including the exact screenshot scenario and the live-edit-propagation scenario.
-4. `docs` — PRD/database-rules corrections (can land alongside step 1, not blocking).
+1. `tour-service` (backend agent) — models, permissions, service/controller/routes, socket broadcast, API contract update. Independently testable via unit tests before any frontend change.
+2. `frontend` (frontend agent) — types/service/slice with socket listener, adapted `AttendanceManagement.tsx`, `Header.tsx` conditional tab, new route. Depends on step 1's routes/socket event existing (or can be stubbed against the contract in parallel, then wired once live).
+3. `security` — review permission wiring and socket PII scoping once both sides are in place.
+4. `qa` — end-to-end validation: create session → check in a party → batch-check a station → copy summary → reset → delete; two-device real-time sync check; date-based tab visibility check.
 
 ## Rollback
-
-- Fully additive on the backend (`busTypeId` is a new nullable field on `Bus`; grid fields are new optional fields on the bus/seat response) — reverting drops back to today's generic-fallback rendering with no data loss, since no production data exists yet. Frontend revert removes the server-grid consumption and the edit-in-use warning UI, restoring today's (buggy) generic fallback for all BusType-created buses.
+- All new backend code is additive (two new models, one new route module, two new permissions, one new socket event) — revert via git with no impact on existing `tour`/`bus`/`seat` flows.
+- Frontend changes are additive (new types/service/slice files, one adapted component, one new conditional tab entry, one new route) — revert via git; no existing admin flows are removed, only extended.

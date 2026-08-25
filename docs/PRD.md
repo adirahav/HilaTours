@@ -56,6 +56,20 @@ Tabbed workspace:
   - Free-text search by name, phone, pickup point, or seat number.
   - "Copy consolidated report" button: copies a formatted summary to the clipboard for sharing (e.g. WhatsApp) or printing.
 
+### Screen 5 — Attendance Management (בדיקת נוכחות)
+- New top-level tab in the `Header`, alongside Gateway/Admin Dashboard entry points — **visible only on the day of the tour** (i.e. when the current date matches the selected tour's `date`); hidden on any other day.
+- Intended for the guide/admin operating from a mobile phone in the field (e.g. while passengers board the bus).
+- Tour/bus selector at the top, matching the pattern used elsewhere in the admin UI.
+- **Attendance sessions:** the guide/admin creates a named "attendance session" (e.g. "איסוף בוקר – יציאה מהמרכז", "עלייה חזרה בערב"). Creating a session snapshots every `taken`/`reserved` seat with a passenger on the selected bus at that moment into per-session attendance records (name, phone, pickup point, seat number, initial status `missing`). Multiple sessions can coexist per bus (e.g. one for morning departure, one for the evening return), shown as pills with a live `present/total` counter; sessions can be reset (all check-ins cleared) or deleted.
+- **Station-based grouping:** attendance records are grouped and sorted by pickup point automatically. Each station shows a progress bar/counter (`present/total` for that station) and can be collapsed/expanded independently, so the guide can focus on the station the bus is currently at.
+- **Party-level (family/group) check-in:** records that share a booking group, or failing that a phone number, or failing that a passenger name, are merged into one compact card (e.g. "כהן יוסי – 3 אנשים"). Tapping the card toggles presence for every member of the group at once, with clear visual feedback (checkmark, color change).
+- **Quick-call for no-shows:** each not-yet-present passenger/group shows their phone number as a tappable `tel:` link, so the guide can call directly from the seat-selection screen without dialing manually.
+- **Bulk actions:**
+  - "Mark entire station as present" / "unmark entire station" — one click per pickup point.
+  - "Share attendance summary" — generates a formatted text summary (total present/missing, per-station breakdown, names+phones of no-shows) and copies it to the clipboard for sharing via WhatsApp or with the driver/office.
+- Free-text search across name/phone/notes to locate a specific passenger or family quickly.
+- Design source: `raw_from_ai_studio/src/components/AttendanceManagement.tsx` (uses local-storage-backed session data in the prototype; production implementation must persist sessions/records server-side per `backend-service-layer`/`mongoose-models-layer` skills instead of client-only storage, so multiple devices stay in sync in real time rather than the prototype's local sync-between-tabs approach).
+
 ---
 
 ## Functional Requirements
@@ -74,6 +88,7 @@ Tabbed workspace:
 | F9  | Admin creates, edits, and soft-deletes buses (seat count, door/driver config, pickup points). | `POST` / `PUT` / `DELETE /api/tour/:tourId/buses/:busId` (`tour-service`) |
 | F10 | Generate the manifest report (search, filter, copy-to-clipboard). | `GET /api/tour/:tourId/buses/:busId/manifest` (`tour-service`) + frontend reporting/client-state logic |
 | F11 | Admin creates, edits, duplicates, and (soft-)deletes reusable bus-type templates (grid rows, door-row position, back-row seat count, disabled seat slots). A bus can be instantiated from a template, converting it into a concrete `seatLayout`. `seatLayout` and `busTypeId` are mutually exclusive on bus creation — supplying both (or neither) is rejected with 400. | `GET`/`POST`/`PUT`/`DELETE /api/busType/:busTypeId`, `POST /api/tour/:tourId/buses` (accepts `seatLayout` XOR `busTypeId`) (`tour-service`) |
+| F12 | Guide/admin creates a named attendance session for a bus, snapshotting all `taken`/`reserved` seats with a passenger into attendance records (name, phone, pickup point, seat, initial status `missing`); can reset or delete a session. Records are grouped by pickup point and by family/party (shared booking group / phone / name). Guide toggles presence per party or per whole station in one action, searches by name/phone/notes, and copies a formatted WhatsApp-ready summary. **The Attendance tab is visible only on the tour's own date.** | `POST`/`GET`/`DELETE /api/tour/:tourId/buses/:busId/attendance-sessions`, `POST /api/tour/:tourId/buses/:busId/attendance-sessions/:sessionId/reset`, `POST /api/tour/:tourId/buses/:busId/attendance-sessions/:sessionId/check` (batch, by party or by pickup point) (`tour-service`) — exact route names to be finalized in the implementation plan |
 
 ---
 
@@ -103,6 +118,9 @@ Tabbed workspace:
 9. **AC-9:** The app builds and runs as a native Android package (Capacitor), with the auth token persisted via `@capacitor/preferences` rather than `localStorage` on that build.
 10. **AC-10:** A colorblind user (or a grayscale/high-contrast display) can correctly identify every seat's status (`available`/`pending`/`taken`/`reserved`) without relying on color — verified via icon and/or text label on each seat.
 11. **AC-11:** A newly signed-up account can log in but receives `401`/`403` on every `tour`/`bus`/`seat` management action until an existing admin manually promotes it to the `admin` role.
+12. **AC-12:** The Attendance Management tab appears in the Header only when the current date equals the selected tour's date; on any other date it is not shown/accessible.
+13. **AC-13:** Tapping a family/party card in an attendance session toggles presence for every member of that party in a single action, and the station's progress counter updates immediately.
+14. **AC-14:** "Share attendance summary" copies to the clipboard a text summary including total present/missing, per-station breakdown, and names+phones of no-shows.
 
 ---
 
@@ -114,6 +132,7 @@ See `glossary.md` for domain terminology and `database-rules.md` for full field 
 - `bus` — belongs to a `tour`; name, `seatLayout`, `pickupPoints[]` (name + order), soft-delete (`deletedAt`).
 - `seat` — belongs to a `bus`; `position`, `status` (`available` | `pending` | `taken` | `reserved`), `pickupPointName`, `passengerName`, `passengerPhone`, `requestedAt`, `approvedAt`, `assignedBy`.
 - `admin` — username, email, passwordHash, `roles[]` (`admin` | `user` — see F1b/AC-11 and `database-rules.md` "Roles & Permissions"), soft-delete (`deletedAt`). No `passenger` account entity exists — passenger identity lives on the `seat` record itself.
+- `attendanceSession` (new, F12) — belongs to a `bus`; `title`, `createdAt`, `createdBy`. Holds a collection of `attendanceRecord`s (`seatNumber`, `passengerName`, `passengerPhone`, `pickupPointName`, `bookingGroupId`/party key, `isPresent`, `notes`) snapshotted from the bus's occupied seats at session-creation time. Design/data-shape details TBD in the implementation plan — see `raw_from_ai_studio/src/components/AttendanceManagement.tsx` and `types.ts` (`AttendanceSession`/`AttendanceRecord`) for the prototype's shape.
 
 ---
 

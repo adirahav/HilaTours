@@ -148,7 +148,10 @@ describe("busTypeGrid on bus responses", () => {
     // The grid is structural only — adding it must not widen the public seat
     // projection (SEV-001).
     for (const seat of bus.seats) {
-      expect(Object.keys(seat).sort()).toEqual(["id", "position", "status"])
+      // `row`/`col` are structural coordinates explicitly listed on the
+      // contract's PublicSeat schema — they are part of the public projection,
+      // not a widening of it. Everything else must stay out.
+      expect(Object.keys(seat).sort()).toEqual(["col", "id", "position", "row", "status"])
     }
     for (const cell of bus.busTypeGrid.seats) {
       expect(Object.keys(cell).sort()).toEqual(["col", "position", "row"])

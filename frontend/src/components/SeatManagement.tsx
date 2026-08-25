@@ -68,6 +68,14 @@ export function SeatManagement({ isLoading = false }: SeatManagementProps) {
     return () => window.removeEventListener("focus", load)
   }, [activeTourId, activeBusId])
 
+  // Publish the tab-local selection to the store so the Header can decide
+  // whether today is this tour's day (and therefore whether to show the
+  // attendance tab, F12). Selection stays owned here; the store only mirrors it.
+  const setSelectedTourIdInStore = useStore((state) => state.setSelectedTourId)
+  useEffect(() => {
+    if (activeTourId) setSelectedTourIdInStore(activeTourId)
+  }, [activeTourId, setSelectedTourIdInStore])
+
   useSeatSocket(activeBusId)
 
   const seats = activeBus?.seats ?? []

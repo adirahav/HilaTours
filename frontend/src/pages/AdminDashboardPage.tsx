@@ -1,5 +1,5 @@
 import { useEffect, useMemo, useState } from 'react'
-import { useLocation } from 'react-router-dom'
+import { useLocation, useNavigate } from 'react-router-dom'
 import { toast } from 'sonner'
 import { Plus } from 'lucide-react'
 import { useStore } from '../store/store'
@@ -12,11 +12,14 @@ import { ConfirmModal } from '../modals/ConfirmModal'
 import { SeatManagement } from '../components/SeatManagement'
 import { TourManagement } from '../components/TourManagement'
 import { BusTypeManagement } from '../components/BusTypeManagement'
+import { AttendanceManagement } from '../components/AttendanceManagement'
 import { PassengerManifestReport } from '../components/PassengerManifestReport'
+import { isTourToday } from '../lib/tourDate'
+import { resolveSelectedTour } from '../lib/selectedTour'
 import type { Tour } from '../types/tour.types'
 import type { Bus, DriverSide, DoorPosition } from '../types/bus.types'
 
-type AdminTab = 'seats' | 'tours' | 'bus-types' | 'report'
+type AdminTab = 'seats' | 'tours' | 'bus-types' | 'attendance' | 'report'
 
 interface ConfirmState {
   title: string
@@ -28,6 +31,7 @@ interface ConfirmState {
 function getActiveTab(pathname: string): AdminTab {
   if (pathname.endsWith('/tours')) return 'tours'
   if (pathname.endsWith('/bus-types')) return 'bus-types'
+  if (pathname.endsWith('/attendance')) return 'attendance'
   if (pathname.endsWith('/report')) return 'report'
   return 'seats'
 }
@@ -42,8 +46,27 @@ function getActiveTab(pathname: string): AdminTab {
 // Destructive deletes use an in-app ConfirmModal (Q4) rather than window.confirm.
 export function AdminDashboardPage() {
   const location = useLocation()
+  const navigate = useNavigate()
   const tours = useStore((state) => state.tours)
+  const selectedTourId = useStore((state) => state.selectedTourId)
   const activeTab = getActiveTab(location.pathname)
+
+  // Attendance is a day-of-tour tool (F12): the Header hides the tab off-day,
+  // and this guard covers direct navigation to /admin/attendance — or a tab
+  // left open past midnight. UI-only; the API stays permission-gated
+  // regardless of date (plan 038, Open Question 2).
+  const isTourDay = useMemo(() => {
+    const selectedTour = resolveSelectedTour(tours, selectedTourId)
+    return !!selectedTour && isTourToday(selectedTour.date)
+  }, [tours, selectedTourId])
+
+  useEffect(() => {
+    // Wait for the first tour fetch before redirecting — an empty list at boot
+    // would otherwise bounce the guide off the tab she just opened.
+    if (activeTab === 'attendance' && tours.length > 0 && !isTourDay) {
+      navigate('/admin/seats', { replace: true })
+    }
+  }, [activeTab, isTourDay, tours.length, navigate])
 
   const [isLoading, setIsLoading] = useState(false)
 
@@ -251,6 +274,10 @@ export function AdminDashboardPage() {
           )}
 
           {activeTab === 'bus-types' && <BusTypeManagement />}
+
+          {activeTab === 'attendance' && isTourDay && (
+            <AttendanceManagement isLoading={isLoading} />
+          )}
 
           {activeTab === 'report' && <PassengerManifestReport isLoading={isLoading} />}
         </>
