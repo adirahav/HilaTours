@@ -21,6 +21,7 @@ export interface RawAttendanceRecord {
   pickupPointName?: string | null
   notes?: string | null
   bookingGroupId?: string | null
+  isApproved?: boolean
   isPresent?: boolean
   checkedInAt?: string | null
 }
@@ -48,6 +49,7 @@ export function mapAttendanceRecord(raw: RawAttendanceRecord): AttendanceRecord 
     pickupPoint: raw.pickupPointName ?? '',
     notes: raw.notes ?? undefined,
     bookingGroupId: raw.bookingGroupId ?? undefined,
+    isApproved: raw.isApproved ?? true,
     isPresent: raw.isPresent ?? false,
     checkedInAt: raw.checkedInAt ?? null
   }

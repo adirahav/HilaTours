@@ -149,6 +149,8 @@ export function toClientAttendanceRecord(
   record: Record<string, any>,
   sessionUuid?: string,
   seatUuid?: string,
+  livePickupPointName?: string | null,
+  isApproved?: boolean,
 ) {
   return {
     id: record.uuid,
@@ -157,9 +159,16 @@ export function toClientAttendanceRecord(
     seatPosition: record.seatPosition,
     passengerName: record.passengerName,
     passengerPhone: record.passengerPhone ?? null,
-    pickupPointName: record.pickupPointName ?? null,
+    // Read live off the seat, not the snapshot: an admin correcting a seat's
+    // pickup point after the session was created must show up here immediately
+    // (bug: guide's board kept showing the pre-correction station forever).
+    pickupPointName: livePickupPointName !== undefined ? livePickupPointName : (record.pickupPointName ?? null),
     notes: record.notes ?? null,
     bookingGroupId: record.bookingGroupId ?? null,
+    // `pending` seats are snapshotted too (the guide still needs to see them),
+    // but flagged unapproved so the UI can warn — this is a live seat-status
+    // read, not the snapshot, same reasoning as pickupPointName above.
+    isApproved: isApproved ?? record.seatStatus !== "pending",
     isPresent: record.isPresent ?? false,
     checkedInAt: record.checkedInAt ?? null,
   }

@@ -65,7 +65,8 @@ function toParty(pickupPoint: string, partyKey: string, records: AttendanceRecor
     // A party counts as present only when every one of its members does —
     // that's what makes the card a single toggle-all control.
     isPresent: presentCount === sorted.length,
-    presentCount
+    presentCount,
+    hasUnapproved: sorted.some(r => !r.isApproved)
   }
 }
 
@@ -166,7 +167,8 @@ export function formatAttendanceSummary(
       const sizeStr =
         party.partySize > 1 ? `(${party.partySize} אנשים: ${namesStr})` : `(${namesStr})`
       const phoneStr = party.passengerPhone ? ` [${party.passengerPhone}]` : ''
-      lines.push(` ${party.isPresent ? '✅' : '❌'} ${party.primaryName} ${sizeStr}${phoneStr}`)
+      const unapprovedStr = party.hasUnapproved ? ' ⚠️ לא מאושר' : ''
+      lines.push(` ${party.isPresent ? '✅' : '❌'} ${party.primaryName} ${sizeStr}${phoneStr}${unapprovedStr}`)
     })
   })
 

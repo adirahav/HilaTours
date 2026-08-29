@@ -390,6 +390,15 @@ components:
             Shared booking-party id copied from the seat when present. `Seat`
             carries no such field today, so this is normally null and clients
             fall back to grouping by phone, then by name.
+        isApproved:
+          type: boolean
+          description: >
+            False when the snapshotted seat was `pending` (an unapproved
+            booking request) at the time the session was created or has since
+            been un-approved. Read live off the seat, not the snapshot — an
+            admin approving/cancelling the seat afterwards is reflected
+            immediately. The guide's UI should warn on `false` rather than
+            hide the record: the passenger still needs to be checked in.
         isPresent:
           type: boolean
           default: false

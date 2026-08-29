@@ -32,6 +32,12 @@ export interface AttendanceRecord {
    * grouping degrades to phone-then-name (see `groupAttendanceByStation`).
    */
   bookingGroupId?: string
+  /**
+   * False when the seat was `pending` (unapproved) at snapshot time or still
+   * is — read live off the seat, not frozen at session creation. The guide's
+   * UI warns on this rather than hiding the passenger.
+   */
+  isApproved: boolean
   isPresent: boolean
   checkedInAt: string | null
 }
@@ -61,6 +67,8 @@ export interface AttendanceParty {
   /** True only when every member of the party is checked in. */
   isPresent: boolean
   presentCount: number
+  /** True when any member of the party is an unapproved (pending) seat. */
+  hasUnapproved: boolean
 }
 
 /** One pickup point, with its parties and per-station progress. */

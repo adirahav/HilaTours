@@ -21,8 +21,13 @@ import { resolveDoc } from "../lib/resolveId"
  * client can swap in wholesale rather than patching record-by-record.
  */
 
-/** Seat statuses that represent a real, booked passenger worth checking in. */
-const SNAPSHOTTED_SEAT_STATUSES = ["taken", "reserved"] as const
+/**
+ * Seat statuses that represent a real passenger worth checking in. `pending`
+ * (an unapproved booking request) is included too — the guide still needs to
+ * see that passenger on the board — but flagged via `isApproved: false` so the
+ * UI can warn the guide the seat isn't confirmed yet.
+ */
+const SNAPSHOTTED_SEAT_STATUSES = ["taken", "reserved", "pending"] as const
 
 /**
  * The session plus the context a caller needs to broadcast it. `busUuid` is
@@ -87,10 +92,20 @@ async function buildSessionResult(
   const seatIds = records.map((r: any) => r.seatId).filter(Boolean)
   const seats = seatIds.length
     ? await Seat.find({ _id: { $in: seatIds }, deletedAt: { $exists: true } })
-        .select("_id uuid")
+        .select("_id uuid pickupPointName status")
         .lean()
     : []
   const seatUuidById = new Map(seats.map((s: any) => [String(s._id), s.uuid as string]))
+  // Live pickup point, keyed by seat — falls back to the record's snapshot
+  // below when the seat no longer exists (deleted bus/seat since the session
+  // was created).
+  const livePickupById = new Map(
+    seats.map((s: any) => [String(s._id), (s.pickupPointName as string | null) ?? null]),
+  )
+  // Live approval state too: an admin approving/cancelling a pending seat after
+  // the session was created must flip the guide's "not approved" warning
+  // immediately, same reasoning as the pickup-point live-join above.
+  const liveSeatStatusById = new Map(seats.map((s: any) => [String(s._id), s.status as string]))
 
   return {
     busUuid: resolvedBusUuid,
@@ -98,9 +113,19 @@ async function buildSessionResult(
       session,
       resolvedTourUuid,
       resolvedBusUuid,
-      records.map((r: any) =>
-        toClientAttendanceRecord(r, session.uuid, seatUuidById.get(String(r.seatId))),
-      ),
+      records.map((r: any) => {
+        const seatKey = String(r.seatId)
+        const liveStatus = liveSeatStatusById.has(seatKey)
+          ? liveSeatStatusById.get(seatKey)
+          : r.seatStatus
+        return toClientAttendanceRecord(
+          r,
+          session.uuid,
+          seatUuidById.get(seatKey),
+          livePickupById.has(seatKey) ? livePickupById.get(seatKey) : undefined,
+          liveStatus !== "pending",
+        )
+      }),
     ),
   }
 }
@@ -182,6 +207,7 @@ export async function createSession(
         passengerName: seat.passengerName,
         passengerPhone: seat.passengerPhone ?? null,
         pickupPointName: seat.pickupPointName ?? null,
+        seatStatus: seat.status,
         notes: seat.notes ?? null,
         bookingGroupId: deriveBookingGroupId(seat),
         isPresent: false,

@@ -5,9 +5,18 @@ import { applyUuidIdentity } from "../lib/clientShape"
  * One snapshotted passenger within an AttendanceSession.
  *
  * The passenger fields are a POINT-IN-TIME COPY of the seat as it was when the
- * session was created — not a live join. An admin editing a passenger's name or
- * pickup point on the seat map afterwards does not change an already-created
- * session (PRD: "snapshots ... at that moment"). That is intended, not a bug.
+ * session was created — not a live join (PRD: "snapshots ... at that moment").
+ * An admin editing a passenger's name afterwards does not change an
+ * already-created session; that is intended, not a bug.
+ *
+ * EXCEPTION: `pickupPointName` and `seatStatus` stored here are fallbacks only.
+ * The attendance service (`buildSessionResult`) overrides both with the seat's
+ * CURRENT values at read time, so a pickup-point correction or a
+ * pending-seat approval made after the session was created is reflected
+ * immediately instead of being stuck on the original snapshot forever.
+ * `seatStatus` is what a `pending` (unapproved) seat is snapshotted from — it
+ * is included in sessions (the guide needs to see the passenger) but the
+ * client shows a "not approved" warning via `isApproved: seatStatus !== "pending"`.
  *
  * CONTAINS PII (`passengerName`/`passengerPhone`/`pickupPointName`), so these
  * records are only ever returned from `attendance:view`-authorized routes and
@@ -29,6 +38,8 @@ export interface AttendanceRecordDoc extends Document {
   passengerName: string
   passengerPhone: string | null
   pickupPointName: string | null
+  /** Seat status at snapshot time ("pending"/"taken"/"reserved"). Fallback only — see class comment. */
+  seatStatus: string
   notes: string | null
   /**
    * Shared booking-party id copied from the seat when present. `Seat` carries no
@@ -49,6 +60,7 @@ const attendanceRecordSchema = new Schema<AttendanceRecordDoc>({
   passengerName: { type: String, required: true },
   passengerPhone: { type: String, default: null },
   pickupPointName: { type: String, default: null },
+  seatStatus: { type: String, default: "taken" },
   notes: { type: String, default: null },
   bookingGroupId: { type: String, default: null },
   isPresent: { type: Boolean, default: false },

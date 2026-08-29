@@ -619,8 +619,13 @@ export function AttendanceManagement({ isLoading = false }: AttendanceManagement
                               className="flex-1 min-w-0 text-start active:scale-[0.98] transition disabled:opacity-60 focus:outline-none focus-visible:ring-2 focus-visible:ring-emerald-600 rounded-xl"
                             >
                               <div className="flex items-center gap-2">
-                                <span className="font-extrabold text-sm text-slate-900 truncate">
+                                <span className="font-extrabold text-sm text-slate-900 whitespace-normal break-words">
                                   {party.primaryName}
+                                </span>
+                              </div>
+                              <div className="flex items-center gap-2 mt-0.5">
+                                <span className="text-[11px] text-slate-400 font-mono truncate">
+                                  מושבים: {party.seatPositions.join(', ')}
                                 </span>
                                 <span
                                   className={cn(
@@ -635,9 +640,15 @@ export function AttendanceManagement({ isLoading = false }: AttendanceManagement
                                   {party.partySize === 1 ? 'נוסע 1' : `${party.partySize} אנשים`}
                                 </span>
                               </div>
-                              <div className="text-[11px] text-slate-400 font-mono mt-0.5 truncate">
-                                מושבים: {party.seatPositions.join(', ')}
-                              </div>
+                              {party.hasUnapproved && (
+                                <span
+                                  className="flex items-center gap-1 w-fit mt-1 text-[11px] font-black px-2 py-0.5 rounded-full bg-rose-100 text-rose-700"
+                                  title="ההזמנה טרם אושרה על ידי המנהל"
+                                >
+                                  <AlertCircle className="w-3 h-3" aria-hidden="true" />
+                                  לא מאושר
+                                </span>
+                              )}
                             </button>
 
                             <div className="flex items-center gap-2 shrink-0">
