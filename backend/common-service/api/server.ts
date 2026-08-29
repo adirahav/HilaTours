@@ -36,7 +36,7 @@ app.get('/health', (_req, res) => {
 // service and pathRewrite logic are both correct in isolation.
 app.use(
   createProxyMiddleware({
-    pathFilter: ['/api/tour', '/api/bus', '/api/seat', '/api/manifest'],
+    pathFilter: ['/api/tour', '/api/bus', '/api/seat', '/api/manifest', '/api/attendance'],
     target: process.env.TOUR_SERVICE_URL || 'http://localhost:3033',
     changeOrigin: true,
     pathRewrite: (path) => `/tour-service${path}`,

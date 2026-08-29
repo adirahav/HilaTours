@@ -60,8 +60,8 @@ describe('common-service gateway', () => {
     expect(res.body.proxiedTo).toBe('http://tour-service.internal:3033')
   })
 
-  it('proxies /api/bus, /api/seat, /api/manifest to TOUR_SERVICE_URL', async () => {
-    for (const p of ['/api/bus/1', '/api/seat/1/bookings', '/api/manifest/1']) {
+  it('proxies /api/bus, /api/seat, /api/manifest, /api/attendance to TOUR_SERVICE_URL', async () => {
+    for (const p of ['/api/bus/1', '/api/seat/1/bookings', '/api/manifest/1', '/api/attendance/session']) {
       const res = await request(app).get(p)
       expect(res.status).toBe(200)
       expect(res.body.proxiedTo).toBe('http://tour-service.internal:3033')
