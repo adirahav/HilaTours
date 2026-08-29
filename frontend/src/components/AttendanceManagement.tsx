@@ -72,6 +72,10 @@ export function AttendanceManagement({ isLoading = false }: AttendanceManagement
   const [collapsedPickups, setCollapsedPickups] = useState<Record<string, boolean>>({})
   const [copiedSummary, setCopiedSummary] = useState(false)
   const [confirmState, setConfirmState] = useState<ConfirmState | null>(null)
+  // Distinct from the tours-loading `isLoading` prop: this tracks the
+  // session-list fetch for the *currently selected* bus, so the "no active
+  // session" empty state isn't shown while that fetch is still in flight.
+  const [isSessionsLoading, setIsSessionsLoading] = useState(false)
 
   const activeTour =
     tours.find((t) => t.id === selectedTourId) ?? resolveSelectedTour(tours, storeSelectedTourId)
@@ -99,10 +103,14 @@ export function AttendanceManagement({ isLoading = false }: AttendanceManagement
 
   useEffect(() => {
     if (!activeTourId || !activeBusId) return
-    attendanceService.query(activeTourId, activeBusId).catch((err) => {
-      console.log('[ATTENDANCE] failed to load sessions', err)
-      toast.error('טעינת בדיקות הנוכחות נכשלה. נסו שוב מאוחר יותר.')
-    })
+    setIsSessionsLoading(true)
+    attendanceService
+      .query(activeTourId, activeBusId)
+      .catch((err) => {
+        console.log('[ATTENDANCE] failed to load sessions', err)
+        toast.error('טעינת בדיקות הנוכחות נכשלה. נסו שוב מאוחר יותר.')
+      })
+      .finally(() => setIsSessionsLoading(false))
   }, [activeTourId, activeBusId])
 
   useAttendanceSocket(activeBusId)
@@ -234,7 +242,7 @@ export function AttendanceManagement({ isLoading = false }: AttendanceManagement
           className="bg-white p-8 rounded-3xl text-center shadow-sm border border-slate-200 animate-pulse"
           aria-live="polite"
         >
-          <p className="text-slate-500 font-bold">טוען טיולים...</p>
+          <p className="text-slate-500">טוען טיולים...</p>
         </div>
       )
     }
@@ -455,7 +463,14 @@ export function AttendanceManagement({ isLoading = false }: AttendanceManagement
         </div>
       </div>
 
-      {!activeSession ? (
+      {isSessionsLoading ? (
+        <div
+          className="bg-white p-8 rounded-3xl text-center shadow-xs border border-slate-200 animate-pulse"
+          aria-live="polite"
+        >
+          <p className="text-slate-500">טוען בדיקות נוכחות...</p>
+        </div>
+      ) : !activeSession ? (
         <div className="bg-white rounded-3xl p-10 text-center shadow-xs border border-slate-200 space-y-4">
           <div className="w-14 h-14 mx-auto rounded-2xl bg-amber-50 text-amber-600 flex items-center justify-center">
             <UserCheck className="w-8 h-8" aria-hidden="true" />
