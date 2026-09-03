@@ -128,16 +128,18 @@ export function Header() {
         {/* Logo & Dynamic Title */}
         <Link
           to="/"
-          className="flex items-center gap-3 shrink-0 rounded-xl focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-blue-400"
+          className="flex items-center gap-3 min-w-0 rounded-xl focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-blue-400"
         >
           <img
             src={logo}
             alt="הילה בלליס"
             className="w-9 h-9 sm:w-10 sm:h-10 rounded-xl shrink-0 object-cover shadow-md shadow-blue-500/20"
           />
-          <h1 className="text-base sm:text-lg md:text-xl font-bold tracking-tight text-white flex items-center gap-1.5 flex-wrap">
-            <span>הילה בלליס</span>
-            <span className="text-slate-400 font-normal text-xs sm:text-sm">- {title}</span>
+          <h1 className="min-w-0 text-base sm:text-lg md:text-xl font-bold tracking-tight text-white flex items-center gap-1.5">
+            <span className="shrink-0">הילה בלליס</span>
+            <span className="text-slate-400 font-normal text-xs sm:text-sm truncate">
+              - {title}
+            </span>
           </h1>
         </Link>
 

@@ -1,5 +1,12 @@
 @import "tailwindcss";
 
+/* Backstop, not a fix: a flex row with a shrink-0/long-text child (e.g. the
+   Header title) can still force the viewport wider on narrow screens. This
+   clips that overflow instead of letting the whole page scroll sideways. */
+body {
+  overflow-x: hidden;
+}
+
 /* CSS-first Tailwind v4 theme (no tailwind.config.js).
    Brand palette derived from raw_from_ai_studio (blue/indigo). */
 @theme {
