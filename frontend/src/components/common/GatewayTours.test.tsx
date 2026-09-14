@@ -85,23 +85,41 @@ describe('GatewayTours', () => {
     expect(onSelectTour).toHaveBeenCalledWith('t42')
   })
 
-  it('renders tour title and description as text, never as HTML (XSS)', () => {
+  it('renders the tour title as text, never as HTML (XSS)', () => {
     const tour = buildTour({
-      title: '<img src=x onerror="alert(1)">טיול',
-      description: '<script>alert(2)</script>הערות'
+      title: '<img src=x onerror="alert(1)">טיול'
     })
     const { container } = render(
       <GatewayTours tours={[tour]} onSelectTour={() => {}} />
     )
 
     expect(container.querySelector('img')).toBeNull()
-    expect(container.querySelector('script')).toBeNull()
     expect(
       screen.getByText('<img src=x onerror="alert(1)">טיול')
     ).toBeInTheDocument()
-    expect(
-      screen.getByText('<script>alert(2)</script>הערות')
-    ).toBeInTheDocument()
+  })
+
+  // Description supports a small allowlist of basic formatting tags (bold,
+  // italic, line breaks, lists) so admins can format tour notes — rendered via
+  // dangerouslySetInnerHTML, so this must prove dangerous markup is stripped
+  // by the sanitizer rather than trusting the allowlist claim alone.
+  it('renders allowlisted formatting tags in the description but strips scripts/attributes (XSS)', () => {
+    const tour = buildTour({
+      description:
+        '<script>alert(2)</script><b onclick="alert(3)">חשוב</b><br/>הערות <img src=x onerror="alert(1)">'
+    })
+    const { container } = render(
+      <GatewayTours tours={[tour]} onSelectTour={() => {}} />
+    )
+
+    expect(container.querySelector('script')).toBeNull()
+    expect(container.querySelector('img')).toBeNull()
+    const bold = container.querySelector('b')
+    expect(bold).not.toBeNull()
+    expect(bold?.textContent).toBe('חשוב')
+    expect(bold?.getAttribute('onclick')).toBeNull()
+    expect(container.querySelector('br')).not.toBeNull()
+    expect(screen.getByText('הערות', { exact: false })).toBeInTheDocument()
   })
 
   it('exposes no admin-only affordance or route on the gateway list', () => {

@@ -49,7 +49,9 @@ describe('TourModal', () => {
     render(<TourModal isOpen onClose={() => {}} onSave={() => {}} tourToEdit={editTour} />)
     expect(screen.getByRole('heading', { name: 'עריכת טיול קיים' })).toBeInTheDocument()
     expect(screen.getByDisplayValue('טיול לגולן')).toBeInTheDocument()
-    expect(screen.getByDisplayValue('מסלול יפה')).toBeInTheDocument()
+    // Description is a WYSIWYG contentEditable surface, not a form control —
+    // getByDisplayValue only matches input/textarea/select.
+    expect(screen.getByLabelText(/תיאור/)).toHaveTextContent('מסלול יפה')
   })
 
   it('blocks submit and shows an inline error (not a toast) when title is empty', async () => {

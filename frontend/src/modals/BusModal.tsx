@@ -44,6 +44,8 @@ export function BusModal({ isOpen, onClose, onSave, busToEdit }: BusModalProps) 
   const [description, setDescription] = useState('')
   const [pickupPoints, setPickupPoints] = useState<string[]>([])
   const [newPickup, setNewPickup] = useState('')
+  const [editingIndex, setEditingIndex] = useState<number | null>(null)
+  const [editingValue, setEditingValue] = useState('')
   const [busTypeId, setBusTypeId] = useState<string | null>(null)
   const [draggedIndex, setDraggedIndex] = useState<number | null>(null)
   const [dragOverIndex, setDragOverIndex] = useState<number | null>(null)
@@ -156,7 +158,24 @@ export function BusModal({ isOpen, onClose, onSave, busToEdit }: BusModalProps) 
 
   const handleRemovePickup = (index: number) => {
     setPickupPoints(pickupPoints.filter((_, i) => i !== index))
+    if (editingIndex === index) setEditingIndex(null)
   }
+
+  const handleStartEditPickup = (index: number) => {
+    setEditingIndex(index)
+    setEditingValue(pickupPoints[index])
+  }
+
+  const commitEditPickup = () => {
+    if (editingIndex === null) return
+    const trimmed = editingValue.trim()
+    if (trimmed) {
+      setPickupPoints(pickupPoints.map((p, i) => (i === editingIndex ? trimmed : p)))
+    }
+    setEditingIndex(null)
+  }
+
+  const cancelEditPickup = () => setEditingIndex(null)
 
   const movePickup = (fromIndex: number, toIndex: number) => {
     if (toIndex < 0 || toIndex >= pickupPoints.length) return
@@ -453,7 +472,42 @@ export function BusModal({ isOpen, onClose, onSave, busToEdit }: BusModalProps) 
                         {index + 1}
                       </span>
                       <MapPin className="w-3.5 h-3.5 text-rose-500 shrink-0" aria-hidden="true" />
-                      <span className="font-medium text-slate-800 truncate">{point}</span>
+                      {editingIndex === index ? (
+                        <input
+                          type="text"
+                          value={editingValue}
+                          autoFocus
+                          onChange={(e) => setEditingValue(e.target.value)}
+                          onBlur={commitEditPickup}
+                          onKeyDown={(e) => {
+                            if (e.key === 'Enter') {
+                              e.preventDefault()
+                              commitEditPickup()
+                            } else if (e.key === 'Escape') {
+                              e.preventDefault()
+                              cancelEditPickup()
+                            }
+                          }}
+                          // Dragging starts from the <li>, so a mousedown that
+                          // begins inside this input must not trigger a drag —
+                          // otherwise text selection while editing gets
+                          // hijacked into a reorder gesture.
+                          draggable
+                          onDragStart={(e) => e.stopPropagation()}
+                          onMouseDown={(e) => e.stopPropagation()}
+                          className="min-w-0 flex-1 bg-white border border-blue-400 rounded-lg px-1.5 py-0.5 text-xs font-medium text-slate-800 focus:outline-none focus:ring-2 focus:ring-blue-500"
+                        />
+                      ) : (
+                        <button
+                          type="button"
+                          onClick={() => handleStartEditPickup(index)}
+                          onMouseDown={(e) => e.stopPropagation()}
+                          title="לחצו לעריכת שם התחנה"
+                          className="font-medium text-slate-800 truncate text-start hover:underline focus:outline-none focus:ring-2 focus:ring-blue-500 rounded"
+                        >
+                          {point}
+                        </button>
+                      )}
                     </div>
 
                     <div className="flex items-center gap-1 shrink-0">

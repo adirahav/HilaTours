@@ -2,6 +2,7 @@
 import { AlertCircle, Calendar, Plus, Edit2, X } from 'lucide-react'
 import type { Tour } from '../types/tour.types'
 import { cn } from '../lib/utils'
+import { HtmlEditorField } from '../components/common/HtmlEditorField'
 
 interface TourModalProps {
   isOpen: boolean
@@ -141,7 +142,7 @@ export function TourModal({ isOpen, onClose, onSave, tourToEdit }: TourModalProp
         aria-modal="true"
         aria-labelledby={titleId}
         dir="rtl"
-        className="bg-white rounded-3xl max-w-lg w-full p-6 sm:p-8 shadow-2xl border border-slate-200"
+        className="bg-white rounded-3xl max-w-lg w-full p-6 sm:p-8 shadow-2xl border border-slate-200 max-h-[90vh] overflow-y-auto"
       >
         <div className="flex items-center justify-between pb-4 border-b border-slate-100 mb-6">
           <div className="flex items-center gap-3">
@@ -248,16 +249,20 @@ export function TourModal({ isOpen, onClose, onSave, tourToEdit }: TourModalProp
           </div>
 
           <div>
-            <label htmlFor={`${titleId}-desc`} className="block text-xs font-bold text-slate-700 mb-1">
+            <label
+              id={`${titleId}-desc-label`}
+              htmlFor={`${titleId}-desc`}
+              className="block text-xs font-bold text-slate-700 mb-1"
+            >
               תיאור הטיול / פרטים נוספים:
             </label>
-            <textarea
+            <HtmlEditorField
               id={`${titleId}-desc`}
+              labelId={`${titleId}-desc-label`}
               rows={3}
               placeholder="תיאור קצר, מסלול, ציוד נדרש וכו'..."
               value={description}
-              onChange={e => setDescription(e.target.value)}
-              className={cn(inputClass, 'py-2')}
+              onChange={setDescription}
             />
           </div>
 
