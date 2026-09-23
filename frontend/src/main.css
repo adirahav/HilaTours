@@ -7,6 +7,26 @@ body {
   overflow-x: hidden;
 }
 
+/* Printing the admin seat map (SeatManagement.tsx "הדפס מפת מושבים"): only
+   #printable-bus-map should reach paper — the tour/bus sidebar, header nav,
+   and page chrome around it are all admin-only interactive UI with no place
+   on a printed sheet the guide hands to the driver. */
+@media print {
+  body * {
+    visibility: hidden;
+  }
+  #printable-bus-map,
+  #printable-bus-map * {
+    visibility: visible;
+  }
+  #printable-bus-map {
+    position: absolute;
+    inset: 0;
+    box-shadow: none;
+    border: none;
+  }
+}
+
 /* CSS-first Tailwind v4 theme (no tailwind.config.js).
    Brand palette derived from raw_from_ai_studio (blue/indigo). */
 @theme {

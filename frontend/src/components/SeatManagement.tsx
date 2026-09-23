@@ -1,6 +1,6 @@
 import { useEffect, useMemo, useState } from "react"
 import { toast } from "sonner"
-import { Clock, CheckCircle2 } from "lucide-react"
+import { Clock, CheckCircle2, Printer } from "lucide-react"
 import { useStore } from "../store/store"
 import { seatService } from "../services/seat.service"
 import { busService } from "../services/bus.service"
@@ -335,8 +335,8 @@ export function SeatManagement({ isLoading = false }: SeatManagementProps) {
         </div>
       </div>
 
-      <div className="lg:col-span-8 bg-white rounded-3xl p-6 shadow-sm border border-slate-200">
-        <div className="flex items-center justify-between mb-4 pb-3 border-b border-slate-100">
+      <div id="printable-bus-map" className="lg:col-span-8 bg-white rounded-3xl p-6 shadow-sm border border-slate-200">
+        <div className="flex items-center justify-between mb-4 pb-3 border-b border-slate-100 print:hidden">
           <div>
             <h2 className="text-lg font-bold text-slate-900">
               מפת מושבים אינטראקטיבית לאדמין - {activeBus.busName}
@@ -346,7 +346,23 @@ export function SeatManagement({ isLoading = false }: SeatManagementProps) {
               &quot;מצב שמירה מהירה&quot; לשמירה/שחרור מיידיים ללא טופס
             </p>
           </div>
+
+          <button
+            type="button"
+            onClick={() => window.print()}
+            className="shrink-0 flex items-center gap-1.5 px-3 py-2 rounded-xl bg-slate-100 hover:bg-slate-200 text-slate-700 text-xs font-bold transition focus:outline-none focus-visible:ring-2 focus-visible:ring-blue-500"
+          >
+            <Printer className="w-3.5 h-3.5" aria-hidden="true" />
+            <span>הדפס מפת מושבים</span>
+          </button>
         </div>
+
+        {/* Print-only heading — the interactive header above is hidden via
+            print:hidden, so the bus name still needs to appear on the
+            printed page itself, not just on screen. */}
+        <h2 className="hidden print:block text-lg font-bold text-slate-900 mb-4">
+          מפת מושבים - {activeBus.busName}
+        </h2>
 
         <BusMap
           seats={seats}

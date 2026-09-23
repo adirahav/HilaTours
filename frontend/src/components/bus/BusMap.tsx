@@ -567,6 +567,15 @@ function SeatButton({
           >
             {seat.passengerName}
           </span>
+          {seat.pickupPoint && (
+            <span
+              className="block text-[8px] sm:text-[9px] font-medium leading-tight truncate opacity-70"
+              dir="rtl"
+              title={seat.pickupPoint}
+            >
+              {seat.pickupPoint}
+            </span>
+          )}
         </div>
       )}
 
