@@ -25,6 +25,20 @@ describe('calculateTotalSeatsFromLayout', () => {
 })
 
 describe('buildNumberedGrid', () => {
+  it('numbers each row and the back bench from the right when direction is rtl', () => {
+    const { standardGrid, backRow } = buildNumberedGrid(2, 3, ['3-2'], null, 'rtl')
+    const first = standardGrid[0]
+    expect([first.col1.number, first.col2.number, first.col3.number, first.col4.number]).toEqual([
+      4, 3, 2, 1
+    ])
+    // Returned by column (left to right) with the disabled middle slot kept as a hole.
+    expect(backRow.map((s) => [s.col, s.number])).toEqual([
+      [1, 10],
+      [2, undefined],
+      [3, 9]
+    ])
+  })
+
   it('numbers seats row by row (col 1→4) and continues into the back bench', () => {
     const { standardGrid, backRow } = buildNumberedGrid(2, 3, [], null)
 

@@ -4,8 +4,13 @@ import type { Tour } from '../types/tour.types'
 // "today" must still show up regardless of what time it is right now, and a
 // stray time component in a stored `date` value (e.g. a full ISO datetime)
 // must not affect the comparison either.
+//
+// Month and day are zero-padded because `isUpcomingTourDate` orders these keys
+// as strings: unpadded, "10" sorts before "7" and "20" before "5".
 function toCalendarDateKey(date: Date): string {
-  return `${date.getFullYear()}-${date.getMonth()}-${date.getDate()}`
+  const month = String(date.getMonth() + 1).padStart(2, '0')
+  const day = String(date.getDate()).padStart(2, '0')
+  return `${date.getFullYear()}-${month}-${day}`
 }
 
 export function isUpcomingTourDate(tourDate: string, referenceDate: Date = new Date()): boolean {

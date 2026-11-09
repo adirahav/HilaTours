@@ -21,6 +21,7 @@ const busTypeFixture = (
   doorRow: 7,
   backRowSeatsCount: 5,
   disabledSeatSlots: [],
+  seatNumberingDirection: 'ltr',
   isDefault,
   busCount: 0,
   createdAt: '2026-08-01'

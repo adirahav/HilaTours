@@ -1,5 +1,5 @@
 import { Types } from "mongoose"
-import { BusType } from "../models/busType.model"
+import { BusType, type SeatNumberingDirection } from "../models/busType.model"
 import { HttpError } from "../lib/http"
 import { toClientBusType } from "../lib/clientShape"
 import { resolveDoc } from "../lib/resolveId"
@@ -10,8 +10,9 @@ import { resolveDoc } from "../lib/resolveId"
  * The layout math below is the authoritative translation of a template into a
  * concrete `Bus.seatLayout`. The frontend mirrors it in
  * `frontend/src/lib/busTypeLayout.ts` for the live preview only — the two must
- * number seats identically: row by row, col 1 → 4, then the back bench,
- * skipping the doorway slot and any disabled slot.
+ * number seats identically: row by row, col 1 → 4 (or 4 → 1 for an `"rtl"`
+ * template), then the back bench in the same direction, skipping the doorway
+ * slot and any disabled slot.
  */
 
 export interface BusTypeInput {
@@ -21,6 +22,7 @@ export interface BusTypeInput {
   doorRow?: number | null
   backRowSeatsCount?: number
   disabledSeatSlots?: string[]
+  seatNumberingDirection?: SeatNumberingDirection
   isDefault?: boolean
   // `totalSeats` is deliberately absent — it is derived server-side and never
   // accepted from client input (see the BusType schema in the API contract).
@@ -54,6 +56,14 @@ export interface BusTypeLayout {
   doorRow: number | null
   backRowSeatsCount: number
   disabledSeatSlots: string[]
+  /** Absent on templates written before the field existed — read as `"ltr"`. */
+  seatNumberingDirection?: SeatNumberingDirection | null
+}
+
+/** Column visiting order for one row of `count` slots. */
+function columnOrder(count: number, direction: SeatNumberingDirection): number[] {
+  const cols = Array.from({ length: count }, (_, i) => i + 1)
+  return direction === "rtl" ? cols.reverse() : cols
 }
 
 /** One numbered seat of a template, with the grid cell it occupies. */
@@ -77,17 +87,22 @@ export interface BusTypeGridSeat {
  * re-derives row/col from the count alone packs the seats and loses the gap.
  *
  * Walk order (must never change without a data migration): row by row, col
- * 1 → 4, skipping the doorway slot and any disabled slot, then the back bench.
+ * 1 → 4 — or 4 → 1 when the template's `seatNumberingDirection` is `"rtl"` —
+ * skipping the doorway slot and any disabled slot, then the back bench in the
+ * same direction. Only the numbers move with the direction; every seat keeps
+ * its row/col cell, so a booked seat number stays booked, just drawn at the
+ * mirrored cell (the same live-join trade-off as any other template edit).
  */
 export function seatGridFromBusType(busType: BusTypeLayout): BusTypeGridSeat[] {
   const disabled = new Set(busType.disabledSeatSlots ?? [])
   const doorRow = busType.doorRow ?? null
+  const direction = busType.seatNumberingDirection ?? "ltr"
   const seats: BusTypeGridSeat[] = []
   const push = (row: number, col: number) =>
     seats.push({ position: String(seats.length + 1), row, col })
 
   for (let row = 1; row <= busType.standardRowsCount; row++) {
-    for (let col = 1; col <= STANDARD_ROW_COLUMNS; col++) {
+    for (const col of columnOrder(STANDARD_ROW_COLUMNS, direction)) {
       if (isDoorwaySlot(row, col, doorRow)) continue
       if (disabled.has(`${row}-${col}`)) continue
       push(row, col)
@@ -95,7 +110,7 @@ export function seatGridFromBusType(busType: BusTypeLayout): BusTypeGridSeat[] {
   }
 
   const backRowIndex = busType.standardRowsCount + 1
-  for (let col = 1; col <= busType.backRowSeatsCount; col++) {
+  for (const col of columnOrder(busType.backRowSeatsCount, direction)) {
     if (isBackSlotDisabled(disabled, backRowIndex, col)) continue
     push(backRowIndex, col)
   }
@@ -130,6 +145,7 @@ export function seatLayoutFromBusType(busType: BusTypeLayout): Record<string, un
     doorRow: busType.doorRow ?? null,
     backRowSeatsCount: busType.backRowSeatsCount,
     disabledSeatSlots: busType.disabledSeatSlots ?? [],
+    seatNumberingDirection: busType.seatNumberingDirection ?? "ltr",
   }
 }
 
@@ -139,6 +155,14 @@ function requireInt(value: unknown, field: string, min: number, max: number): nu
     throw new HttpError(400, `${field} must be an integer between ${min} and ${max}`)
   }
   return n
+}
+
+function normalizeNumberingDirection(value: unknown): SeatNumberingDirection {
+  if (value === undefined || value === null) return "ltr"
+  if (value !== "ltr" && value !== "rtl") {
+    throw new HttpError(400, 'seatNumberingDirection must be "ltr" or "rtl"')
+  }
+  return value
 }
 
 function normalizeDisabledSlots(value: unknown): string[] {
@@ -177,7 +201,14 @@ function normalizeInput(input: BusTypeInput) {
   }
 
   const disabledSeatSlots = normalizeDisabledSlots(input.disabledSeatSlots)
-  const layout = { standardRowsCount, doorRow, backRowSeatsCount, disabledSeatSlots }
+  const seatNumberingDirection = normalizeNumberingDirection(input.seatNumberingDirection)
+  const layout = {
+    standardRowsCount,
+    doorRow,
+    backRowSeatsCount,
+    disabledSeatSlots,
+    seatNumberingDirection,
+  }
   const totalSeats = totalSeatsFromBusType(layout)
   if (totalSeats === 0) {
     throw new HttpError(400, "This layout produces no seats")
@@ -303,6 +334,7 @@ export interface ClientBusTypeGrid {
   doorRow: number | null
   backRowSeatsCount: number
   disabledSeatSlots: string[]
+  seatNumberingDirection: SeatNumberingDirection
   seats: BusTypeGridSeat[]
 }
 
@@ -346,6 +378,7 @@ export async function busTypeGridForBus(
     doorRow: layout.doorRow ?? null,
     backRowSeatsCount: layout.backRowSeatsCount,
     disabledSeatSlots: layout.disabledSeatSlots ?? [],
+    seatNumberingDirection: layout.seatNumberingDirection ?? "ltr",
     seats: seatGridFromBusType(layout),
   }
 }

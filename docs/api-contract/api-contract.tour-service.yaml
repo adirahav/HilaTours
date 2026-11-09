@@ -162,6 +162,10 @@ components:
                 express "seat, empty slot, seat" within one row, which is why
                 a mid-row gap used to render as packed consecutive seats.
               example: ["5-3"]
+            seatNumberingDirection:
+              type: string
+              enum: [ltr, rtl]
+              description: The template's numbering direction (see `BusType.seatNumberingDirection`); already applied to `seats[].row/col`.
         pickupPoints:
           type: array
           items:
@@ -251,6 +255,16 @@ components:
           items:
             type: string
           description: '`"row-col"` keys (e.g. `"3-2"`) for slots blocked in the grid (no seat rendered/bookable there).'
+        seatNumberingDirection:
+          type: string
+          enum: [ltr, rtl]
+          default: ltr
+          description: >
+            Which way seat numbers run across each row and the back bench:
+            `ltr` = col 1 first, `rtl` = the last col first. Rows are always
+            numbered front to back. Changes only which cell each seat number
+            lands in; the seat positions themselves ("1".."N") are unchanged.
+            Omitted/absent is read as `ltr`.
         isDefault:
           type: boolean
           default: false
@@ -303,6 +317,16 @@ components:
           type: array
           items:
             type: string
+        seatNumberingDirection:
+          type: string
+          enum: [ltr, rtl]
+          default: ltr
+          description: >
+            Which way seat numbers run across each row and the back bench:
+            `ltr` = col 1 first, `rtl` = the last col first. Rows are always
+            numbered front to back. Changes only which cell each seat number
+            lands in; the seat positions themselves ("1".."N") are unchanged.
+            Omitted/absent is read as `ltr`.
         isDefault:
           type: boolean
 

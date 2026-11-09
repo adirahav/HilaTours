@@ -28,6 +28,39 @@ describe('isUpcomingTourDate', () => {
   it('drops a tour dated last month', () => {
     expect(isUpcomingTourDate('2026-07-01', REFERENCE)).toBe(false)
   })
+
+  // Regression: the comparison must be chronological, not lexicographic —
+  // "10" sorts before "7" and "20" before "5" as unpadded strings, which hid
+  // future tours and surfaced past ones whenever the month or day digit count
+  // differed between the tour and today.
+  describe('when month and day digit counts differ', () => {
+    const NOVEMBER_REFERENCE = new Date('2026-11-05T09:00:00Z')
+
+    it('keeps a later tour in the same month with a two-digit day', () => {
+      expect(isUpcomingTourDate('2026-11-20', NOVEMBER_REFERENCE)).toBe(true)
+    })
+
+    it('keeps a tour in a later month', () => {
+      expect(isUpcomingTourDate('2026-12-01', NOVEMBER_REFERENCE)).toBe(true)
+    })
+
+    it('keeps a tour in the next year', () => {
+      expect(isUpcomingTourDate('2027-01-03', NOVEMBER_REFERENCE)).toBe(true)
+    })
+
+    it('drops a tour from a single-digit month', () => {
+      expect(isUpcomingTourDate('2026-08-20', NOVEMBER_REFERENCE)).toBe(false)
+    })
+
+    it('drops a tour from the previous month', () => {
+      expect(isUpcomingTourDate('2026-10-30', NOVEMBER_REFERENCE)).toBe(false)
+    })
+
+    it('drops an earlier tour in the same month when today has a two-digit day', () => {
+      const lateNovember = new Date('2026-11-20T09:00:00Z')
+      expect(isUpcomingTourDate('2026-11-05', lateNovember)).toBe(false)
+    })
+  })
 })
 
 // Drives the attendance tab's visibility (F12): true ONLY on the tour's own

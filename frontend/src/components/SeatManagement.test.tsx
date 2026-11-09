@@ -1,4 +1,4 @@
-import { describe, it, expect, vi, beforeEach } from 'vitest'
+import { describe, it, expect, vi, beforeEach, afterEach } from 'vitest'
 import { render, screen, waitFor, fireEvent } from '@testing-library/react'
 import userEvent from '@testing-library/user-event'
 import { SeatManagement } from './SeatManagement'
@@ -70,7 +70,14 @@ const buildTour = (): Tour => ({
 })
 
 describe('SeatManagement', () => {
+  afterEach(() => {
+    vi.useRealTimers()
+  })
+
   beforeEach(() => {
+    // The fixture tour date is fixed, and past tours are filtered out or locked,
+    // so pin "today" before it instead of depending on the real clock.
+    vi.setSystemTime(new Date('2026-08-01T09:00:00Z'))
     vi.clearAllMocks()
     useStore.setState({ tours: [buildTour()], selectedSeatNumbers: [] })
   })

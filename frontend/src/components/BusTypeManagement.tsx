@@ -3,6 +3,8 @@ import { toast } from 'sonner'
 import {
   AlertCircle,
   ArrowDown,
+  ArrowLeft,
+  ArrowRight,
   ArrowUp,
   Bus,
   Check,
@@ -31,7 +33,7 @@ import {
   calculateTotalSeatsFromLayout,
   createDefault55BusTypeInput
 } from '../lib/busTypeLayout'
-import type { BusType } from '../types/busType.types'
+import type { BusType, SeatNumberingDirection } from '../types/busType.types'
 import { cn } from '../lib/utils'
 
 // Admin tab 3 (F11): the bus-type template builder. Design source is
@@ -56,6 +58,8 @@ export function BusTypeManagement({ isLoading = false }: BusTypeManagementProps)
   const [doorRow, setDoorRow] = useState<number | null>(7)
   const [backRowSeatsCount, setBackRowSeatsCount] = useState(5)
   const [disabledSeatSlots, setDisabledSeatSlots] = useState<string[]>([])
+  const [seatNumberingDirection, setSeatNumberingDirection] =
+    useState<SeatNumberingDirection>('ltr')
   const [isDefault, setIsDefault] = useState(false)
 
   const [nameError, setNameError] = useState('')
@@ -81,6 +85,7 @@ export function BusTypeManagement({ isLoading = false }: BusTypeManagementProps)
     setDoorRow(busType.doorRow)
     setBackRowSeatsCount(busType.backRowSeatsCount)
     setDisabledSeatSlots([...busType.disabledSeatSlots])
+    setSeatNumberingDirection(busType.seatNumberingDirection)
     setIsDefault(busType.isDefault)
     setNameError('')
     setRowsError('')
@@ -136,7 +141,8 @@ export function BusTypeManagement({ isLoading = false }: BusTypeManagementProps)
     standardRowsCount,
     backRowSeatsCount,
     disabledSeatSlots,
-    doorRow
+    doorRow,
+    seatNumberingDirection
   )
 
   // Mutations ---------------------------------------------------------------
@@ -208,6 +214,7 @@ export function BusTypeManagement({ isLoading = false }: BusTypeManagementProps)
         doorRow,
         backRowSeatsCount,
         disabledSeatSlots,
+        seatNumberingDirection,
         isDefault
       })
       toast.success('השינויים בתבנית האוטובוס נשמרו בהצלחה')
@@ -585,6 +592,37 @@ export function BusTypeManagement({ isLoading = false }: BusTypeManagementProps)
             {/* Live interactive bus map builder */}
             <div className="lg:col-span-7 flex flex-col items-center">
               <div className="w-full max-w-xl bg-white rounded-3xl p-5 sm:p-6 shadow-sm border border-slate-200">
+                {/* Only the numbers move; every seat keeps its cell. */}
+                <fieldset className="mb-4" dir="rtl">
+                  <legend className="block text-xs font-bold text-slate-700 mb-1">
+                    כיוון מספור המושבים
+                  </legend>
+                  <div className="grid grid-cols-2 gap-2">
+                    {(
+                      [
+                        { value: 'rtl', label: 'מימין לשמאל', Icon: ArrowLeft },
+                        { value: 'ltr', label: 'משמאל לימין', Icon: ArrowRight }
+                      ] as const
+                    ).map(({ value, label, Icon }) => (
+                      <button
+                        key={value}
+                        type="button"
+                        onClick={() => setSeatNumberingDirection(value)}
+                        aria-pressed={seatNumberingDirection === value}
+                        className={cn(
+                          'px-3 py-2 rounded-xl text-xs font-bold border transition flex items-center justify-center gap-1.5 focus:outline-none focus-visible:ring-2 focus-visible:ring-amber-500',
+                          seatNumberingDirection === value
+                            ? 'bg-slate-900 text-white border-slate-900 shadow-xs'
+                            : 'bg-white text-slate-700 border-slate-300 hover:bg-slate-50'
+                        )}
+                      >
+                        <span>{label}</span>
+                        <Icon className="w-3.5 h-3.5" aria-hidden="true" />
+                      </button>
+                    ))}
+                  </div>
+                </fieldset>
+
                 <div
                   className="bg-slate-900/5 rounded-3xl p-4 sm:p-5 border-2 border-slate-300 shadow-inner relative"
                   dir="ltr"

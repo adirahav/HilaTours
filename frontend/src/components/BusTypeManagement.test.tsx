@@ -32,6 +32,7 @@ const busType: BusType = {
   doorRow: 7,
   backRowSeatsCount: 5,
   disabledSeatSlots: [],
+  seatNumberingDirection: 'ltr',
   isDefault: false,
   busCount: 0,
   createdAt: '2026-08-01'

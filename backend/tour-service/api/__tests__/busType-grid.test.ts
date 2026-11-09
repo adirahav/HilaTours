@@ -102,6 +102,51 @@ describe("seatGridFromBusType", () => {
 })
 
 // ---------------------------------------------------------------------------
+// Numbering direction: only which cell each number lands in changes — the
+// positions and the cells themselves stay the same set.
+// ---------------------------------------------------------------------------
+describe("seatNumberingDirection", () => {
+  it("defaults to left-to-right (col 1 first) when the field is absent", () => {
+    const grid = seatGridFromBusType(MINI_BUS_WITH_GAP)
+    expect(grid.slice(0, 4).map((s) => s.col)).toEqual([1, 2, 3, 4])
+  })
+
+  it("numbers each row and the back bench from the last column when rtl", () => {
+    const grid = seatGridFromBusType({ ...MINI_BUS_WITH_GAP, seatNumberingDirection: "rtl" })
+    expect(grid.slice(0, 4)).toEqual([
+      { position: "1", row: 1, col: 4 },
+      { position: "2", row: 1, col: 3 },
+      { position: "3", row: 1, col: 2 },
+      { position: "4", row: 1, col: 1 },
+    ])
+    // Bench cols 4, 2, 1 — the disabled col 3 is still a hole.
+    expect(grid.filter((s) => s.row === 4).map((s) => s.col)).toEqual([4, 2, 1])
+    expect(grid[12]).toEqual({ position: "13", row: 4, col: 4 })
+  })
+
+  it("persists the direction and returns it on the template and the bus grid", async () => {
+    const busType = await makeBusType({ seatNumberingDirection: "rtl" })
+    expect(busType.seatNumberingDirection).toBe("rtl")
+
+    const tour = await makeTour()
+    const created = await makeBus(tour.id, { busTypeId: busType.id })
+    const res = await request(app)
+      .get(`${API_BASE}/tour/${tour.id}/buses/${created.id}`)
+      .set(auth)
+    expect(res.body.busTypeGrid.seatNumberingDirection).toBe("rtl")
+    expect(res.body.busTypeGrid.seats[0]).toEqual({ position: "1", row: 1, col: 4 })
+  })
+
+  it("rejects an unknown direction", async () => {
+    const res = await request(app)
+      .post(`${API_BASE}/busType`)
+      .set(auth)
+      .send({ ...MINI_BUS_WITH_GAP, seatNumberingDirection: "up" })
+    expect(res.status).toBe(400)
+  })
+})
+
+// ---------------------------------------------------------------------------
 // All three read paths must carry the same grid.
 // ---------------------------------------------------------------------------
 describe("busTypeGrid on bus responses", () => {

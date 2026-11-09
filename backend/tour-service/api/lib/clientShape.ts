@@ -110,6 +110,7 @@ export function toClientBusType(busType: Record<string, any>) {
     doorRow: busType.doorRow ?? null,
     backRowSeatsCount: busType.backRowSeatsCount,
     disabledSeatSlots: busType.disabledSeatSlots ?? [],
+    seatNumberingDirection: busType.seatNumberingDirection ?? "ltr",
     isDefault: busType.isDefault ?? false,
     createdAt: busType.createdAt,
     deletedAt: busType.deletedAt ?? null,

@@ -16,6 +16,8 @@ import { applyUuidIdentity } from "../lib/clientShape"
  *
  * Design source: raw_from_ai_studio/src/components/BusTypeManagement.tsx.
  */
+export type SeatNumberingDirection = "ltr" | "rtl"
+
 export interface BusTypeDoc extends Document {
   /** Public identity (plan 028). `_id` is internal-only and never serialized. */
   uuid: string
@@ -34,6 +36,13 @@ export interface BusTypeDoc extends Document {
   backRowSeatsCount: number
   /** `"row-col"` keys for slots with no seat (e.g. `"3-2"`). */
   disabledSeatSlots: string[]
+  /**
+   * Which way seat numbers run across each row (and the back bench), as seen
+   * on the map: `"ltr"` = col 1 → last col, `"rtl"` = last col → col 1.
+   * Rows are always numbered front to back. Documents written before this
+   * field existed have none and are read as `"ltr"` (the original walk).
+   */
+  seatNumberingDirection: SeatNumberingDirection
   /** UI default-selection hint only; at most one template has it (service-enforced). */
   isDefault: boolean
   createdAt: Date
@@ -48,6 +57,7 @@ const busTypeSchema = new Schema<BusTypeDoc>({
   doorRow: { type: Number, default: null },
   backRowSeatsCount: { type: Number, required: true },
   disabledSeatSlots: { type: [String], default: [] },
+  seatNumberingDirection: { type: String, enum: ["ltr", "rtl"], default: "ltr" },
   isDefault: { type: Boolean, default: false },
   createdAt: { type: Date, default: Date.now },
   deletedAt: { type: Date, default: null },

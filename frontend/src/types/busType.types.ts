@@ -7,6 +7,13 @@
 // never blocked; `busCount` below is what the warning counts.
 // Contract: docs/api-contract/api-contract.tour-service.yaml (`BusType`).
 
+/**
+ * Which way seat numbers run across each row (and the back bench) on the map:
+ * `'ltr'` = col 1 (left) first, `'rtl'` = the last col (right) first. Rows are
+ * always numbered front to back.
+ */
+export type SeatNumberingDirection = 'ltr' | 'rtl'
+
 export interface BusType {
   id: string
   name: string
@@ -21,6 +28,7 @@ export interface BusType {
   backRowSeatsCount: number
   /** `"row-col"` keys (e.g. `"3-2"`) for slots with no seat. */
   disabledSeatSlots: string[]
+  seatNumberingDirection: SeatNumberingDirection
   isDefault: boolean
   /**
    * How many non-deleted buses currently reference this template. Server-
@@ -42,5 +50,6 @@ export interface BusTypeInput {
   doorRow: number | null
   backRowSeatsCount: number
   disabledSeatSlots: string[]
+  seatNumberingDirection: SeatNumberingDirection
   isDefault?: boolean
 }

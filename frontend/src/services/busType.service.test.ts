@@ -42,6 +42,7 @@ const storedBusType = (overrides: Partial<BusType> = {}): BusType => ({
   doorRow: 7,
   backRowSeatsCount: 5,
   disabledSeatSlots: [],
+  seatNumberingDirection: 'ltr',
   isDefault: false,
   busCount: 0,
   createdAt: '2026-08-01',
@@ -82,7 +83,8 @@ describe('busTypeService.create / update', () => {
       standardRowsCount: 13,
       doorRow: 7,
       backRowSeatsCount: 5,
-      disabledSeatSlots: []
+      disabledSeatSlots: [],
+      seatNumberingDirection: 'ltr'
     })
 
     const [, url, payload] = postMock.mock.calls[0]
@@ -100,7 +102,8 @@ describe('busTypeService.create / update', () => {
       standardRowsCount: 13,
       doorRow: 7,
       backRowSeatsCount: 5,
-      disabledSeatSlots: []
+      disabledSeatSlots: [],
+      seatNumberingDirection: 'ltr'
     })
 
     expect(putMock).toHaveBeenCalledWith(expect.anything(), '/busType/bt1', expect.anything())

@@ -1,4 +1,4 @@
-import type { BusType, BusTypeInput } from '../types/busType.types'
+import type { BusType, BusTypeInput, SeatNumberingDirection } from '../types/busType.types'
 
 // Pure layout math for BusType templates (F11). Kept separate from
 // `busLayoutHelper.ts`, which describes the *fixed* fleet layout of a concrete
@@ -7,8 +7,15 @@ import type { BusType, BusTypeInput } from '../types/busType.types'
 // The server owns the authoritative translation of a template into a Bus
 // `seatLayout` (`seatLayoutFromBusType`) — everything here is display-only:
 // the live preview grid and the derived seat count shown while editing.
-// Numbering must therefore match the server's: row by row, col 1→4, then the
-// back bench, skipping the door slot and any disabled slot.
+// Numbering must therefore match the server's: row by row, col 1→4 (4→1 for
+// an 'rtl' template), then the back bench in the same direction, skipping the
+// door slot and any disabled slot.
+
+/** Column visiting order for one row of `count` slots. */
+function columnOrder(count: number, direction: SeatNumberingDirection): number[] {
+  const cols = Array.from({ length: count }, (_, i) => i + 1)
+  return direction === 'rtl' ? cols.reverse() : cols
+}
 
 export const MIN_STANDARD_ROWS = 2
 export const MAX_STANDARD_ROWS = 18
@@ -78,11 +85,14 @@ export function buildNumberedGrid(
   standardRowsCount: number,
   backRowSeatsCount: number,
   disabledSeatSlots: string[],
-  doorRow: number | null
+  doorRow: number | null,
+  direction: SeatNumberingDirection = 'ltr'
 ): { standardGrid: GridRow[]; backRow: BackRowSlot[] } {
   const disabled = new Set(disabledSeatSlots)
   let seatNumber = 1
 
+  // Slots are numbered in `direction` order but returned by column, so the
+  // builder keeps drawing col 1..4 left-to-right either way.
   const slot = (row: number, col: number): GridSlot => {
     const active = !isDoorwaySlot(row, col, doorRow) && !disabled.has(`${row}-${col}`)
     return { active, number: active ? seatNumber++ : undefined }
@@ -90,22 +100,25 @@ export function buildNumberedGrid(
 
   const standardGrid: GridRow[] = []
   for (let row = 1; row <= standardRowsCount; row++) {
+    const slots: Record<number, GridSlot> = {}
+    for (const col of columnOrder(4, direction)) slots[col] = slot(row, col)
     standardGrid.push({
       row,
-      col1: slot(row, 1),
-      col2: slot(row, 2),
-      col3: slot(row, 3),
-      col4: slot(row, 4),
+      col1: slots[1],
+      col2: slots[2],
+      col3: slots[3],
+      col4: slots[4],
       hasDoor: doorRow !== null && row === doorRow
     })
   }
 
   const backRowIndex = standardRowsCount + 1
   const backRow: BackRowSlot[] = []
-  for (let col = 1; col <= backRowSeatsCount; col++) {
+  for (const col of columnOrder(backRowSeatsCount, direction)) {
     const active = !isBackSlotDisabled(disabled, backRowIndex, col)
     backRow.push({ col, active, number: active ? seatNumber++ : undefined })
   }
+  backRow.sort((a, b) => a.col - b.col)
 
   return { standardGrid, backRow }
 }
@@ -123,6 +136,7 @@ export function createDefault55BusTypeInput(name: string): BusTypeInput {
     doorRow: 7,
     backRowSeatsCount: 5,
     disabledSeatSlots: [],
+    seatNumberingDirection: 'ltr',
     isDefault: false
   }
 }
@@ -136,6 +150,7 @@ export function toBusTypeInput(busType: BusType): BusTypeInput {
     doorRow: busType.doorRow,
     backRowSeatsCount: busType.backRowSeatsCount,
     disabledSeatSlots: [...busType.disabledSeatSlots],
+    seatNumberingDirection: busType.seatNumberingDirection,
     isDefault: busType.isDefault
   }
 }

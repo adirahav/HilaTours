@@ -12,6 +12,7 @@ import {
   MapPin,
   Phone,
   Plus,
+  Printer,
   RotateCcw,
   Search,
   Share2,
@@ -30,6 +31,7 @@ import {
   groupAttendanceByStation
 } from '../lib/attendanceGrouping'
 import { ConfirmModal } from '../modals/ConfirmModal'
+import { AttendancePrintSheet } from './AttendancePrintSheet'
 import { cn } from '../lib/utils'
 import type { AttendanceParty, AttendanceStation } from '../types/attendance.types'
 
@@ -128,6 +130,13 @@ export function AttendanceManagement({ isLoading = false }: AttendanceManagement
   const stations = useMemo(
     () => groupAttendanceByStation(activeSession, activeBus?.pickupPoints ?? [], searchQuery),
     [activeSession, activeBus?.pickupPoints, searchQuery]
+  )
+
+  // The printed sheet always lists every passenger — the on-screen search
+  // filter is a lookup aid, not something that should shorten the paper list.
+  const printStations = useMemo(
+    () => groupAttendanceByStation(activeSession, activeBus?.pickupPoints ?? [], ''),
+    [activeSession, activeBus?.pickupPoints]
   )
 
   const stats = useMemo(() => attendanceStats(activeSession), [activeSession])
@@ -311,14 +320,24 @@ export function AttendanceManagement({ isLoading = false }: AttendanceManagement
           </div>
 
           {activeSession && (
-            <button
-              type="button"
-              onClick={handleCopySummary}
-              className="px-3.5 py-1.5 bg-slate-900 hover:bg-slate-800 text-white text-xs font-bold rounded-xl shadow-xs transition flex items-center gap-1.5 focus:outline-none focus-visible:ring-2 focus-visible:ring-amber-500"
-            >
-              <Share2 className="w-3.5 h-3.5 text-amber-400" aria-hidden="true" />
-              <span>{copiedSummary ? 'הדוח הועתק לוואטסאפ!' : 'שתף סיכום נוכחות'}</span>
-            </button>
+            <div className="flex items-center gap-2 flex-wrap">
+              <button
+                type="button"
+                onClick={() => window.print()}
+                className="px-3.5 py-1.5 bg-slate-100 hover:bg-slate-200 text-slate-700 text-xs font-bold rounded-xl transition flex items-center gap-1.5 focus:outline-none focus-visible:ring-2 focus-visible:ring-amber-500"
+              >
+                <Printer className="w-3.5 h-3.5" aria-hidden="true" />
+                <span>הדפס רשימת נוכחות</span>
+              </button>
+              <button
+                type="button"
+                onClick={handleCopySummary}
+                className="px-3.5 py-1.5 bg-slate-900 hover:bg-slate-800 text-white text-xs font-bold rounded-xl shadow-xs transition flex items-center gap-1.5 focus:outline-none focus-visible:ring-2 focus-visible:ring-amber-500"
+              >
+                <Share2 className="w-3.5 h-3.5 text-amber-400" aria-hidden="true" />
+                <span>{copiedSummary ? 'הדוח הועתק לוואטסאפ!' : 'שתף סיכום נוכחות'}</span>
+              </button>
+            </div>
           )}
         </div>
       </div>
@@ -713,6 +732,17 @@ export function AttendanceManagement({ isLoading = false }: AttendanceManagement
             )}
           </div>
         </div>
+      )}
+
+      {activeSession && (
+        <AttendancePrintSheet
+          tourTitle={activeTour.title}
+          tourDate={activeTour.date}
+          busName={activeBus.busName}
+          session={activeSession}
+          stations={printStations}
+          stats={stats}
+        />
       )}
 
       <ConfirmModal

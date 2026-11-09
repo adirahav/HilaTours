@@ -75,6 +75,7 @@
 - `doorRow` — Number, default: null — 1-based row index where the middle door replaces the right-side seat pair; null means no middle door
 - `backRowSeatsCount` — Number, required — seats in the final bench row (no aisle)
 - `disabledSeatSlots` — [String], default: `[]` — `"row-col"` keys for slots blocked in the grid
+- `seatNumberingDirection` — String (`"ltr"` | `"rtl"`), default: `"ltr"` — which way seat numbers run across each row and the back bench. Only moves which grid cell each seat number (`position`) lands in; positions are never renumbered, so no reseed is needed. Documents without the field are read as `"ltr"`.
 - `isDefault` — Boolean, default: false
 - `createdAt` — Date, default: Date.now
 - `deletedAt` — Date, default: null (soft delete)

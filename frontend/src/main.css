@@ -25,6 +25,18 @@ body {
     box-shadow: none;
     border: none;
   }
+
+  /* Printing the attendance sheet (AttendancePrintSheet.tsx): it is portaled
+     under <body>, so every sibling (the app root) is removed from layout
+     rather than just made invisible — a long passenger list must paginate
+     from the top of page 1, not float over a page-sized invisible app. */
+  body:has(> #printable-attendance) > :not(#printable-attendance) {
+    display: none;
+  }
+  #printable-attendance,
+  #printable-attendance * {
+    visibility: visible;
+  }
 }
 
 /* CSS-first Tailwind v4 theme (no tailwind.config.js).

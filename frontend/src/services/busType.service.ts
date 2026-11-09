@@ -20,6 +20,7 @@ export interface RawBusType {
   doorRow?: number | null
   backRowSeatsCount?: number
   disabledSeatSlots?: string[]
+  seatNumberingDirection?: string
   isDefault?: boolean
   busCount?: number
   createdAt?: string
@@ -49,6 +50,9 @@ export function mapBusType(raw: RawBusType): BusType {
     doorRow,
     backRowSeatsCount,
     disabledSeatSlots,
+    // Templates saved before the field existed come back without it; the
+    // server numbers those left-to-right, so the editor must show the same.
+    seatNumberingDirection: raw.seatNumberingDirection === 'rtl' ? 'rtl' : 'ltr',
     isDefault: raw.isDefault ?? false,
     // Unlike `totalSeats`, this has no client-side formula to fall back on —
     // only the server can count referencing buses. 0 means "don't warn",
@@ -68,6 +72,7 @@ function toBusTypePayload(input: BusTypeInput) {
     doorRow: input.doorRow,
     backRowSeatsCount: input.backRowSeatsCount,
     disabledSeatSlots: input.disabledSeatSlots,
+    seatNumberingDirection: input.seatNumberingDirection,
     isDefault: input.isDefault ?? false
   }
 }
@@ -112,6 +117,7 @@ export const busTypeService = {
       doorRow: busType.doorRow,
       backRowSeatsCount: busType.backRowSeatsCount,
       disabledSeatSlots: [...busType.disabledSeatSlots],
+      seatNumberingDirection: busType.seatNumberingDirection,
       isDefault: false
     })
   },
